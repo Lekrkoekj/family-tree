@@ -1,9 +1,144 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>Family Tree</title>
-    </head>
-    <body>
-        <h1>HI</h1>
-    </body>
+
+<head>
+    <title>Keim Family Tree</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <main id="main">
+        <h1>Keim Family Tree</h1>
+        <button id="sign-in">Sign in with Google</button>
+        <br>
+        <button id="sign-out">Sign out</button>
+    </main>
+
+    <dialog id="register-dialog">
+        <h2>Welcome!</h2>
+        <input id="register-email" disabled>
+        <br>
+        <input id="first-name" type="text" maxlength="50" placeholder="First name">
+        <br>
+        <input id="last-name" type="text" maxlength="50" placeholder="Last name">
+        <br>
+        <p id="register-error" style="display: none; color: red;"></p>
+        <br>
+        <button id="register-submit">Request access</button>
+        <button id="register-cancel">Cancel</button>
+    </dialog>
+
+    <dialog id="pending-dialog">
+        <h2>Access requested</h2>
+        <p>Your request to access the Keim family tree has been received. Access is given manually, so please wait until your account gets approved.
+        </p>
+        <button id="pending-sign-out">Sign out</button>
+    </dialog>
+
+    <!-- LOGIN WITH FIREBASE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+            from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, serverTimestamp }
+            from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDmg2aj7M7kY0kr30B6CEJUWHd0Zaj6-7E",
+            authDomain: "keim-family-tree.firebaseapp.com",
+            projectId: "keim-family-tree",
+            storageBucket: "keim-family-tree.firebasestorage.app",
+            messagingSenderId: "797265255257",
+            appId: "1:797265255257:web:2e8bbc3a9e54c2e6f20a48",
+            measurementId: "G-L0MQPEQ6S2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        document.getElementById("sign-in").onclick = () =>
+            signInWithPopup(auth, new GoogleAuthProvider());
+        document.getElementById("sign-out").onclick = () => signOut(auth);
+
+        const main = document.getElementById("main");
+        const pendingDialog = document.getElementById("pending-dialog");
+
+        pendingDialog.addEventListener("cancel", (e) => e.preventDefault());  // Make it so that people can't just press ESC to close the popup
+        document.getElementById("pending-sign-out").onclick = () => signOut(auth);
+
+        function showPending() {
+            main.style.display = "none";
+            if (!pendingDialog.open) pendingDialog.showModal();
+        }
+        onAuthStateChanged(auth, async (user) => {
+            // If user doesn't exist = not logged in
+            if (user == null) {
+                console.log("User is not logged in!!");
+                pendingDialog.close();
+                main.style.display = "";
+                document.getElementById("sign-out").style.display = "none";
+                document.getElementById("register-dialog").close();
+                return;
+            }
+
+            // If the user does exist, log in
+            console.log("logged in as:", user.email);
+            document.getElementById("sign-out").style.display = "";
+
+            const userRef = doc(db, "users", user.email.toLowerCase());
+
+            const dialog = document.getElementById("register-dialog");
+            const errorEl = document.getElementById("register-error");
+
+            // Make it so that people can't just press ESC to close the popup
+            dialog.addEventListener("cancel", (e) => e.preventDefault());
+
+            document.getElementById("register-cancel").onclick = () => signOut(auth);
+
+            try {
+                const snap = await getDoc(userRef);
+
+                if (snap.exists()) {
+                    const role = snap.data().role;
+                    console.log("role:", role);
+                    if (role === "pending") showPending();
+                    return;
+                }
+
+                // Unknown user: show the registration popup instead of writing right away
+                document.getElementById("register-email").value = user.email;
+                dialog.showModal();
+
+                document.getElementById("register-submit").onclick = async () => {
+                    const firstName = document.getElementById("first-name").value.trim();
+                    const lastName = document.getElementById("last-name").value.trim();
+
+                    if (firstName === "" || lastName === "") {
+                        errorEl.textContent = "Please fill in both fields.";
+                        errorEl.style.display = "block";
+                        return;
+                    }
+
+                    try {
+                        await setDoc(userRef, {
+                            role: "pending",
+                            firstName: firstName,
+                            lastName: lastName,
+                            createdAt: serverTimestamp()
+                        });
+                        dialog.close();
+                        showPending();
+                        console.log("Registered, role: pending");
+                    } catch (error) {
+                        console.error("Could not save:", error);
+                    }
+                };
+            } catch (error) {
+                console.error("Firestore error:", error);
+            }
+        });
+    </script>
+</body>
+
 </html>
