@@ -95,7 +95,8 @@ function route() {
     }
     current = def;
 
-    document.querySelectorAll(".screen").forEach((s) => (s.hidden = s.id !== "screen-" + key));
+    const screenId = "screen-" + (def.screen ?? key);
+    document.querySelectorAll(".screen").forEach((s) => (s.hidden = s.id !== screenId));
     $("title").textContent = def.title;
     $("back-button").hidden = !def.parent;
 

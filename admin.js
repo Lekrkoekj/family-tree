@@ -1,5 +1,8 @@
 import { db, myEmail } from "./firebase.js";
-import { collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, serverTimestamp }
+import {
+    collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
+    query, where, writeBatch, serverTimestamp
+}
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { goBack, goTo } from "./router.js";
 import { $, showError, friendlyError, displayName } from "./ui.js";
@@ -74,7 +77,6 @@ export async function renderPeople() {
         people.sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
 
         const items = people.map((p) => {
-            const li = document.createElement("li");
             const info = document.createElement("div");
             info.className = "info";
 
@@ -86,7 +88,13 @@ export async function renderPeople() {
             meta.textContent = lifespan(p);
 
             info.append(name, meta);
-            li.append(info);
+
+            const link = document.createElement("a");
+            link.href = "#/person/edit/" + encodeURIComponent(p.id);
+            link.append(info);
+
+            const li = document.createElement("li");
+            li.append(link);
             return li;
         });
 
@@ -100,11 +108,79 @@ export async function renderPeople() {
     }
 }
 
-export function resetPersonForm() {
+let editingPersonId = null; // null = adding a new person
+
+// "1931-05" -> 1931 / 05 / empty in the three boxes
+function fillDate(prefix, value) {
+    const [year, month, day] = (value ?? "").split("-");
+    $(prefix + "-year").value = year ?? "";
+    $(prefix + "-month").value = month ?? "";
+    $(prefix + "-day").value = day ?? "";
+}
+
+// Used by both #/person/new (id = null) and #/person/edit/<id>
+export async function renderPersonForm(id) {
+    editingPersonId = id;
+
     $("person-form").reset();
     $("death-date").hidden = true;
     $("person-error").hidden = true;
-    $("person-submit").disabled = false;
+
+    const submit = $("person-submit");
+    const remove = $("person-delete");
+    submit.textContent = id ? "Save" : "Add person";
+    remove.hidden = !id;
+    submit.disabled = remove.disabled = !!id; // when editing, wait until the person has loaded
+    if (!id) return;
+
+    try {
+        const snap = await getDoc(doc(db, "persons", id));
+        if (editingPersonId !== id) return;
+        if (!snap.exists()) {
+            goTo("#/people", { replace: true });
+            return;
+        }
+
+        const p = snap.data();
+        $("first-name").value = p.firstName;
+        $("last-name").value = p.lastName;
+        $("gender").value = p.gender;
+        fillDate("birth", p.birthDate);
+        $("deceased").checked = p.deceased === true;
+        $("death-date").hidden = !p.deceased;
+        fillDate("death", p.deathDate);
+        submit.disabled = remove.disabled = false;
+    } catch (error) {
+        console.error("Could not load person:", error);
+        showError($("person-error"), friendlyError(error));
+    }
+}
+
+async function deletePerson() {
+    const id = editingPersonId;
+    const name = $("first-name").value.trim() + " " + $("last-name").value.trim();
+    if (!confirm("Delete " + name + "? Their relationships are removed too. This can't be undone.")) return;
+
+    const remove = $("person-delete");
+    remove.disabled = true;
+    try {
+        const relations = collection(db, "relations");
+        const [asA, asB] = await Promise.all([
+            getDocs(query(relations, where("personA", "==", id))),
+            getDocs(query(relations, where("personB", "==", id))),
+        ]);
+
+        // All or nothing: the person and every relation they are part of
+        const batch = writeBatch(db);
+        batch.delete(doc(db, "persons", id));
+        [...asA.docs, ...asB.docs].forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        goBack();
+    } catch (error) {
+        console.error("Could not delete person:", error);
+        showError($("person-error"), friendlyError(error));
+        remove.disabled = false;
+    }
 }
 
 async function submitPerson(event) {
@@ -143,7 +219,8 @@ async function submitPerson(event) {
     const submit = $("person-submit");
     submit.disabled = true; // no double submits
     try {
-        await addDoc(collection(db, "persons"), person);
+        if (editingPersonId) await setDoc(doc(db, "persons", editingPersonId), person);
+        else await addDoc(collection(db, "persons"), person);
         goBack(); // back to the list, which reloads itself
     } catch (error) {
         console.error("Could not save person:", error);
@@ -367,6 +444,7 @@ async function submitUser(event) {
 export function initAdmin() {
     $("deceased").onchange = () => { $("death-date").hidden = !$("deceased").checked; };
     $("person-form").onsubmit = submitPerson;
+    $("person-delete").onclick = deletePerson;
     $("user-form").onsubmit = submitUser;
     $("edit-user-form").onsubmit = submitUserDetail;
     $("edit-user-remove").onclick = removeUser;

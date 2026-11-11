@@ -58,8 +58,8 @@
             <ul id="people-list" class="list"></ul>
         </section>
 
-        <!-- ADD PERSON SCREEN -->
-        <section class="screen" id="screen-person-new" hidden>
+        <!-- ADD / EDIT PERSON SCREEN -->
+        <section class="screen" id="screen-person-form" hidden>
             <form id="person-form" class="form">
                 <input id="first-name" placeholder="First name" maxlength="50" required>
                 <input id="last-name" placeholder="Last name" maxlength="50" required>
@@ -89,6 +89,7 @@
 
                 <p id="person-error" class="error" hidden></p>
                 <button id="person-submit" type="submit">Add person</button>
+                <button id="person-delete" type="button" class="danger" hidden>Delete person</button>
             </form>
         </section>
 
@@ -171,7 +172,7 @@
         import { signOut, onAuthStateChanged }
             from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
         import { startRouter, goBack } from "./router.js";
-        import { initAdmin, renderPeople, renderUsers, renderUserDetail, resetPersonForm, resetUserForm } from "./admin.js";
+        import { initAdmin, renderPeople, renderUsers, renderUserDetail, renderPersonForm, resetUserForm } from "./admin.js";
         import { initAccount, renderAccount, renderAccountEdit } from "./account.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
@@ -187,7 +188,8 @@
             "admin": { title: "Admin", tab: "admin", admin: true },
 
             "people": { title: "People", tab: "admin", admin: true, parent: "#/admin", add: "#/person/new", render: renderPeople },
-            "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", render: resetPersonForm },
+            "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", render: renderPersonForm },
+            "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", param: true, render: renderPersonForm },
 
             "files": { title: "Files", tab: "admin", admin: true, parent: "#/admin", add: "#/file/new" },
             "file-new": { title: "Add file", tab: "admin", admin: true, parent: "#/files" },
