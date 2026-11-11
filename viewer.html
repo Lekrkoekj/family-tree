@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Family Tree</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="viewer.css">
+</head>
+
+<body hidden>
+    <header id="top-bar">
+        <button id="back-button" aria-label="Back" hidden>&larr;</button>
+        <h1 id="title">Family Tree</h1>
+        <a id="add-button" href="#" aria-label="Add" hidden>+</a>
+    </header>
+    <main id="view">
+        <!-- FAMILY TREE SCREEN -->
+        <section class="screen" id="screen-tree" hidden>
+            <p>Family tree goes here.</p>
+        </section>
+
+        <!-- ACCOUNT SCREEN -->
+        <section class="screen" id="screen-account" hidden>
+            <h2 id="account-name"></h2>
+            <p id="account-email"></p>
+            <button id="sign-out">Sign out</button>
+        </section>
+
+        <!-- ADMIN SCREEN -->
+        <section class="screen" id="screen-admin" hidden>
+            <nav class="menu">
+                <a href="#/people">People</a>
+                <a href="#/files">Files</a>
+                <a href="#/users">Users</a>
+            </nav>
+        </section>
+
+        <!-- PEOPLE SCREEN -->
+        <section class="screen" id="screen-people" hidden>
+            <p id="people-status" class="muted" hidden></p>
+            <ul id="people-list" class="list"></ul>
+        </section>
+
+        <!-- ADD PERSON SCREEN -->
+        <section class="screen" id="screen-person-new" hidden>
+            <form id="person-form" class="form">
+                <input id="first-name" placeholder="First name" maxlength="50" required>
+                <input id="last-name" placeholder="Last name" maxlength="50" required>
+
+                <select id="gender" required>
+                    <option value="">Gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                </select>
+
+                <fieldset id="birth-date">
+                    <legend>Birth date</legend>
+                    <input id="birth-month" placeholder="MM" maxlength="2" inputmode="numeric">
+                    <input id="birth-day" placeholder="DD" maxlength="2" inputmode="numeric">
+                    <input id="birth-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
+                </fieldset>
+
+                <label><input id="deceased" type="checkbox"> Deceased</label>
+
+                <fieldset id="death-date" hidden>
+                    <legend>Death date</legend>
+                    <input id="death-month" placeholder="MM" maxlength="2" inputmode="numeric">
+                    <input id="death-day" placeholder="DD" maxlength="2" inputmode="numeric">
+                    <input id="death-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
+                </fieldset>
+
+                <p id="person-error" class="error" hidden></p>
+                <button id="person-submit" type="submit">Add person</button>
+            </form>
+        </section>
+
+        <!-- FILES SCREEN -->
+        <section class="screen" id="screen-files" hidden>
+            <p class="muted">No files yet. Uploading is not built yet; the + button opens the screen it will live on.
+            </p>
+        </section>
+
+        <!-- ADD FILE SCREEN -->
+        <section class="screen" id="screen-file-new" hidden>
+            <p>Planned fields:</p>
+            <ul>
+                <li>A file to upload, or a URL instead</li>
+                <li>Name and description</li>
+                <li>Type (worked out from the file) and, for documents, what kind of document it is</li>
+                <li>Which people it belongs to (one or more)</li>
+            </ul>
+        </section>
+
+        <!-- USERS SCREEN -->
+        <section class="screen" id="screen-users" hidden>
+            <p id="users-status" class="muted" hidden></p>
+            <ul id="users-list" class="list"></ul>
+        </section>
+
+        <!-- ADD USER SCREEN -->
+        <section class="screen" id="screen-user-new" hidden>
+            <form id="user-form" class="form">
+                <p class="muted">Use the exact email of the Google account they sign in with. They can open the site
+                    right away, without waiting for approval.</p>
+                <input id="user-email" type="email" placeholder="Email" required>
+                <input id="user-first-name" placeholder="First name" maxlength="50" required>
+                <input id="user-last-name" placeholder="Last name" maxlength="50" required>
+
+                <select id="user-role">
+                    <option value="viewer">Viewer (can look)</option>
+                    <option value="admin">Admin (can edit)</option>
+                </select>
+
+                <p id="user-error" class="error" hidden></p>
+                <button id="user-submit" type="submit">Add user</button>
+            </form>
+        </section>
+    </main>
+
+    <nav id="bottom-bar">
+        <a href="#/tree" data-tab="tree">Family tree</a>
+        <a href="#/admin" data-tab="admin" id="admin-tab" hidden>Admin</a>
+        <a href="#/account" data-tab="account">Account</a>
+    </nav>
+
+    <script type="module">
+        import { auth, getUserData } from "./firebase.js";
+        import { signOut, onAuthStateChanged }
+            from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+        import { startRouter, goBack } from "./router.js";
+        import { initAdmin, renderPeople, renderUsers, resetPersonForm, resetUserForm } from "./admin.js";
+
+        document.getElementById("sign-out").onclick = () => signOut(auth);
+        document.getElementById("back-button").onclick = goBack;
+
+        // All the screens in the app. Key = the URL after "#/" with "/" replaced by "-".
+        
+        const routes = {
+            "tree": { title: "Family Tree", tab: "tree" },
+            "account": { title: "Account", tab: "account" },
+
+            "admin": { title: "Admin", tab: "admin", admin: true },
+
+            "people": { title: "People", tab: "admin", admin: true, parent: "#/admin", add: "#/person/new", render: renderPeople },
+            "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", render: resetPersonForm },
+
+            "files": { title: "Files", tab: "admin", admin: true, parent: "#/admin", add: "#/file/new" },
+            "file-new": { title: "Add file", tab: "admin", admin: true, parent: "#/files" },
+
+            "users": { title: "Users", tab: "admin", admin: true, parent: "#/admin", add: "#/user/new", render: renderUsers },
+            "user-new": { title: "Add user", tab: "admin", admin: true, parent: "#/users", render: resetUserForm },
+        };
+
+        // Check if the user has access to the app, if not kick them to sign in.
+        onAuthStateChanged(auth, async (user) => {
+            if (user == null) {
+                location.replace("index.html");
+                return;
+            }
+
+            try {
+                const data = await getUserData(user);
+                const role = data?.role;
+
+                if (role !== "viewer" && role !== "admin") {
+                    location.replace("index.html");
+                    return;
+                }
+
+                console.log("logged in as:", user.email, "role:", role);
+
+                // Users added by an admin may not have a name; fall back to the email.
+                const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+                document.getElementById("account-name").textContent = fullName || user.email;
+                document.getElementById("account-email").textContent = user.email;
+
+                const isAdmin = role === "admin";
+                document.getElementById("admin-tab").hidden = !isAdmin;
+                if (isAdmin) initAdmin();
+
+                startRouter({ routes, isAdmin });
+                document.body.hidden = false;
+            } catch (error) {
+                console.error("Firestore error:", error);
+                location.replace("index.html");
+            }
+        });
+    </script>
+</body>
+
+</html>

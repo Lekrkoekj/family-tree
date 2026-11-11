@@ -1,0 +1,155 @@
+/* The hidden attribute must always win, even over display: grid / flex below */
+[hidden] {
+    display: none !important;
+}
+
+body {
+    margin: 0;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    /* top bar, screens (takes the rest), bottom bar */
+    font-family: system-ui, sans-serif;
+}
+
+/* ---------- Top bar ---------- */
+/* Three fixed columns. Items are placed in explicit columns, so the title stays centred
+   even when the back or + button is hidden. */
+#top-bar {
+    display: grid;
+    grid-template-columns: 3.5rem 1fr 3.5rem;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+}
+
+#top-bar h1 {
+    grid-column: 2;
+    margin: 0;
+    padding: 14px 0;
+    font-size: 1.25rem;
+    text-align: center;
+}
+
+#back-button {
+    grid-column: 1;
+    border: 0;
+    background: none;
+    font-size: 1.5rem;
+    padding: 8px 0;
+    cursor: pointer;
+}
+
+#add-button {
+    grid-column: 3;
+    text-align: center;
+    text-decoration: none;
+    color: inherit;
+    font-size: 1.75rem;
+    padding: 4px 0;
+}
+
+/* ---------- Screens ---------- */
+#view {
+    min-height: 0;
+    /* lets this grid row shrink so only the screens scroll, not the bars */
+    overflow: auto;
+}
+
+.screen {
+    padding: 16px;
+}
+
+/* ---------- Bottom bar ---------- */
+#bottom-bar {
+    display: flex;
+    border-top: 1px solid #ddd;
+}
+
+#bottom-bar a {
+    flex: 1;
+    padding: 14px 0;
+    text-align: center;
+    text-decoration: none;
+    color: inherit;
+}
+
+#bottom-bar a.active {
+    font-weight: bold;
+}
+
+/* ---------- Admin menu ---------- */
+.menu a {
+    display: block;
+    padding: 16px 4px;
+    border-bottom: 1px solid #eee;
+    color: inherit;
+    text-decoration: none;
+}
+
+.menu a::after {
+    content: "\203A";
+    float: right;
+}
+
+/* ---------- Lists (people, users) ---------- */
+.list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.list .info {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.list .actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.muted {
+    color: #666;
+    font-size: 0.875rem;
+}
+
+.error {
+    color: #c00;
+}
+
+/* ---------- Forms ---------- */
+.form {
+    display: grid;
+    gap: 12px;
+    max-width: 28rem;
+}
+
+.form input,
+.form select,
+.form button {
+    font-size: 1rem;
+    padding: 8px;
+}
+
+.form fieldset {
+    display: flex;
+    gap: 8px;
+}
+
+.form fieldset input {
+    width: 3.5rem;
+}
+
+.form fieldset input[id$="-year"] {
+    width: 5.5rem;
+}
