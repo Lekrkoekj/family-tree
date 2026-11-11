@@ -17,6 +17,11 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// The signed-in user's email as used for document IDs in "users"
+export function myEmail() {
+    return auth.currentUser.email.toLowerCase();
+}
+
 // Returns the user's document data, or null if they have no document yet
 export async function getUserData(user) {
     const snap = await getDoc(doc(db, "users", user.email.toLowerCase()));

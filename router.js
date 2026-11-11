@@ -59,14 +59,38 @@ function onHashChange() {
     route();
 }
 
+// "#/person/new" -> { key: "person-new", param: null }
+// "#/user/a%40b.com" -> { key: "user", param: "a@b.com" }, but only if the "user" route has param: true
+function parseHash() {
+    const path = location.hash.slice(2);
+    const key = path.replace(/\//g, "-") || "tree";
+    if (routes[key]) return { key, param: null };
+
+    const slash = path.lastIndexOf("/");
+    if (slash <= 0) return { key, param: null };
+
+    const baseKey = path.slice(0, slash).replace(/\//g, "-");
+    if (!routes[baseKey]?.param) return { key, param: null };
+
+    try {
+        return { key: baseKey, param: decodeURIComponent(path.slice(slash + 1)) || null };
+    } catch {
+        return { key: baseKey, param: null }; // malformed %-encoding
+    }
+}
+
 function route() {
-    // "#/person/new" -> "person-new"; no hash at all -> the tree
-    const key = location.hash.slice(2).replace(/\//g, "-") || "tree";
+    const { key, param } = parseHash();
     const def = routes[key];
 
     // Unknown screen, or an admin screen for someone who isn't an admin: go to the tree.
     if (!def || (def.admin && !isAdmin)) {
         goTo("#/tree", { replace: true });
+        return;
+    }
+    // A screen that needs a parameter but didn't get one: go to its parent.
+    if (def.param && param === null) {
+        goTo(def.parent ?? "#/tree", { replace: true });
         return;
     }
     current = def;
@@ -84,5 +108,5 @@ function route() {
     });
 
     $("view").scrollTop = 0;
-    if (def.render) def.render();
+    if (def.render) def.render(param);
 }

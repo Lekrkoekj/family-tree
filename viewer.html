@@ -25,7 +25,22 @@
         <section class="screen" id="screen-account" hidden>
             <h2 id="account-name"></h2>
             <p id="account-email"></p>
+            <nav class="menu">
+                <a href="#/account/edit">Edit name</a>
+            </nav>
             <button id="sign-out">Sign out</button>
+        </section>
+
+        <!-- EDIT OWN NAME SCREEN -->
+        <section class="screen" id="screen-account-edit" hidden>
+            <form id="account-form" class="form">
+                <input id="account-edit-email" disabled>
+                <input id="account-first-name" placeholder="First name" maxlength="50" required>
+                <input id="account-last-name" placeholder="Last name" maxlength="50" required>
+
+                <p id="account-error" class="error" hidden></p>
+                <button id="account-submit" type="submit">Save</button>
+            </form>
         </section>
 
         <!-- ADMIN SCREEN -->
@@ -97,7 +112,32 @@
         <!-- USERS SCREEN -->
         <section class="screen" id="screen-users" hidden>
             <p id="users-status" class="muted" hidden></p>
-            <ul id="users-list" class="list"></ul>
+            <div id="requests-section" hidden>
+                <h2 id="requests-header" class="list-header"></h2>
+                <ul id="requests-list" class="list"></ul>
+            </div>
+            <div id="users-section" hidden>
+                <h2 id="users-header" class="list-header"></h2>
+                <ul id="users-list" class="list"></ul>
+            </div>
+        </section>
+
+        <!-- EDIT USER SCREEN -->
+        <section class="screen" id="screen-user" hidden>
+            <form id="edit-user-form" class="form">
+                <input id="edit-user-email" disabled>
+                <input id="edit-user-first-name" placeholder="First name" maxlength="50" required>
+                <input id="edit-user-last-name" placeholder="Last name" maxlength="50" required>
+
+                <select id="edit-user-role">
+                    <option value="viewer">Viewer (can look)</option>
+                    <option value="admin">Admin (can edit)</option>
+                </select>
+
+                <p id="edit-user-error" class="error" hidden></p>
+                <button id="edit-user-submit" type="submit">Save</button>
+                <button id="edit-user-remove" type="button" class="danger">Remove user</button>
+            </form>
         </section>
 
         <!-- ADD USER SCREEN -->
@@ -131,7 +171,8 @@
         import { signOut, onAuthStateChanged }
             from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
         import { startRouter, goBack } from "./router.js";
-        import { initAdmin, renderPeople, renderUsers, resetPersonForm, resetUserForm } from "./admin.js";
+        import { initAdmin, renderPeople, renderUsers, renderUserDetail, resetPersonForm, resetUserForm } from "./admin.js";
+        import { initAccount, renderAccount, renderAccountEdit } from "./account.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
         document.getElementById("back-button").onclick = goBack;
@@ -140,7 +181,8 @@
         
         const routes = {
             "tree": { title: "Family Tree", tab: "tree" },
-            "account": { title: "Account", tab: "account" },
+            "account": { title: "Account", tab: "account", render: renderAccount },
+            "account-edit": { title: "Edit name", tab: "account", parent: "#/account", render: renderAccountEdit },
 
             "admin": { title: "Admin", tab: "admin", admin: true },
 
@@ -152,6 +194,7 @@
 
             "users": { title: "Users", tab: "admin", admin: true, parent: "#/admin", add: "#/user/new", render: renderUsers },
             "user-new": { title: "Add user", tab: "admin", admin: true, parent: "#/users", render: resetUserForm },
+            "user": { title: "Edit user", tab: "admin", admin: true, parent: "#/users", param: true, render: renderUserDetail },
         };
 
         // Check if the user has access to the app, if not kick them to sign in.
@@ -172,11 +215,7 @@
 
                 console.log("logged in as:", user.email, "role:", role);
 
-                // Users added by an admin may not have a name; fall back to the email.
-                const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
-                document.getElementById("account-name").textContent = fullName || user.email;
-                document.getElementById("account-email").textContent = user.email;
-
+                initAccount();
                 const isAdmin = role === "admin";
                 document.getElementById("admin-tab").hidden = !isAdmin;
                 if (isAdmin) initAdmin();

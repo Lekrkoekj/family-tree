@@ -1,20 +1,8 @@
-import { db } from "./firebase.js";
-import { collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, serverTimestamp }
+import { db, myEmail } from "./firebase.js";
+import { collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
-import { goBack } from "./router.js";
-
-const $ = (id) => document.getElementById(id);
-
-function showError(el, message) {
-    el.textContent = message;
-    el.hidden = false;
-}
-
-// Firestore errors have a .code; "permission-denied" means the Security Rules said no.
-function friendlyError(error) {
-    if (error?.code === "permission-denied") return "You are not allowed to do that (the Security Rules said no).";
-    return "Something went wrong. Check the console for details.";
-}
+import { goBack, goTo } from "./router.js";
+import { $, showError, friendlyError, displayName } from "./ui.js";
 
 // ---------- Date helpers ----------
 
@@ -174,54 +162,160 @@ export async function renderUsers() {
     try {
         const snap = await getDocs(collection(db, "users"));
         const users = snap.docs.map((d) => ({ email: d.id, ...d.data() }));
-
-        // Pending requests first, so they are the first thing you see
-        const order = { pending: 0, admin: 1, viewer: 2 };
         users.sort((a, b) =>
-            (order[a.role] ?? 3) - (order[b.role] ?? 3) ||
-            (a.lastName ?? "").localeCompare(b.lastName ?? ""));
+            (a.lastName ?? "").localeCompare(b.lastName ?? "") ||
+            (a.firstName ?? "").localeCompare(b.firstName ?? ""));
 
-        const items = users.map((u) => {
-            const li = document.createElement("li");
+        const requests = users.filter((u) => u.role === "pending");
+        const members = users.filter((u) => u.role !== "pending");
 
-            const info = document.createElement("div");
-            info.className = "info";
-            const name = document.createElement("div");
-            name.textContent = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
-            const meta = document.createElement("div");
-            meta.className = "muted";
-            meta.textContent = u.email + " · " + u.role;
-            info.append(name, meta);
-            li.append(info);
+        $("requests-header").textContent = "Requests (" + requests.length + ")";
+        $("requests-list").replaceChildren(...requests.map(requestItem));
+        $("requests-section").hidden = requests.length === 0;
 
-            if (u.role === "pending") {
-                const actions = document.createElement("div");
-                actions.className = "actions";
-                const approve = document.createElement("button");
-                approve.textContent = "Approve";
-                approve.onclick = async () => {
-                    approve.disabled = true;
-                    try {
-                        await updateDoc(doc(db, "users", u.email), { role: "viewer" });
-                        await renderUsers();
-                    } catch (error) {
-                        console.error("Could not approve:", error);
-                        showError(status, friendlyError(error));
-                        approve.disabled = false;
-                    }
-                };
-                actions.append(approve);
-                li.append(actions);
-            }
-            return li;
-        });
+        $("users-header").textContent = "Users (" + members.length + ")";
+        $("users-list").replaceChildren(...members.map(userItem));
+        $("users-section").hidden = false;
 
-        $("users-list").replaceChildren(...items);
-        status.textContent = "No users yet.";
-        status.hidden = users.length > 0;
+        status.hidden = true;
     } catch (error) {
         console.error("Could not load users:", error);
         showError(status, friendlyError(error));
+    }
+}
+
+function userInfo(u) {
+    const info = document.createElement("div");
+    info.className = "info";
+    const name = document.createElement("div");
+    name.textContent = displayName(u);
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    meta.textContent = u.email + " · " + u.role;
+    info.append(name, meta);
+    return info;
+}
+
+function userItem(u) {
+    const link = document.createElement("a");
+    link.href = u.email === myEmail() ? "#/account/edit" : "#/user/" + encodeURIComponent(u.email);
+    link.append(userInfo(u));
+
+    const li = document.createElement("li");
+    li.append(link);
+    return li;
+}
+
+function requestItem(u) {
+    const approve = document.createElement("button");
+    approve.textContent = "Approve";
+    const deny = document.createElement("button");
+    deny.textContent = "Deny";
+    deny.className = "danger";
+
+    // Runs one of the two actions with both buttons disabled, then reloads the list
+    async function act(action, label) {
+        approve.disabled = deny.disabled = true;
+        try {
+            await action();
+            await renderUsers();
+        } catch (error) {
+            console.error("Could not " + label + ":", error);
+            showError($("users-status"), friendlyError(error));
+            approve.disabled = deny.disabled = false;
+        }
+    }
+
+    approve.onclick = () => act(() => updateDoc(doc(db, "users", u.email), { role: "viewer" }), "approve");
+    deny.onclick = () => {
+        if (!confirm("Deny the request from " + displayName(u) + "?")) return;
+        act(() => deleteDoc(doc(db, "users", u.email)), "deny");
+    };
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.append(approve, deny);
+
+    const li = document.createElement("li");
+    li.append(userInfo(u), actions);
+    return li;
+}
+
+// ---------- Edit user ----------
+
+let editingEmail = null;
+
+export async function renderUserDetail(email) {
+    // Your own account is edited on the Account screen, where the rules allow it
+    if (email === myEmail()) {
+        goTo("#/account/edit", { replace: true });
+        return;
+    }
+    editingEmail = email;
+
+    $("edit-user-form").reset();
+    $("edit-user-error").hidden = true;
+    $("edit-user-email").value = email;
+    $("edit-user-submit").disabled = $("edit-user-remove").disabled = true;
+
+    try {
+        const snap = await getDoc(doc(db, "users", email));
+        if (editingEmail !== email) return; // already opened someone else while this was loading
+
+        // Deleted in the meantime, or still a request: nothing to edit here
+        if (!snap.exists() || snap.data().role === "pending") {
+            goTo("#/users", { replace: true });
+            return;
+        }
+
+        const u = snap.data();
+        $("edit-user-first-name").value = u.firstName ?? "";
+        $("edit-user-last-name").value = u.lastName ?? "";
+        $("edit-user-role").value = u.role;
+        $("edit-user-submit").disabled = $("edit-user-remove").disabled = false;
+    } catch (error) {
+        console.error("Could not load user:", error);
+        showError($("edit-user-error"), friendlyError(error));
+    }
+}
+
+async function submitUserDetail(event) {
+    event.preventDefault();
+    const errorEl = $("edit-user-error");
+    errorEl.hidden = true;
+
+    const firstName = $("edit-user-first-name").value.trim();
+    const lastName = $("edit-user-last-name").value.trim();
+    const role = $("edit-user-role").value;
+
+    if (firstName === "" || lastName === "") return showError(errorEl, "Please fill in a first and last name.");
+    if (!["viewer", "admin"].includes(role)) return showError(errorEl, "Please choose a role.");
+
+    const submit = $("edit-user-submit");
+    submit.disabled = true;
+    try {
+        await updateDoc(doc(db, "users", editingEmail), { firstName, lastName, role });
+        goBack();
+    } catch (error) {
+        console.error("Could not save user:", error);
+        showError(errorEl, friendlyError(error));
+        submit.disabled = false;
+    }
+}
+
+async function removeUser() {
+    const name = $("edit-user-first-name").value.trim() || editingEmail;
+    if (!confirm("Remove " + name + "? They will lose access to the family tree.")) return;
+
+    const remove = $("edit-user-remove");
+    remove.disabled = true;
+    try {
+        await deleteDoc(doc(db, "users", editingEmail));
+        goBack();
+    } catch (error) {
+        console.error("Could not remove user:", error);
+        showError($("edit-user-error"), friendlyError(error));
+        remove.disabled = false;
     }
 }
 
@@ -274,4 +368,6 @@ export function initAdmin() {
     $("deceased").onchange = () => { $("death-date").hidden = !$("deceased").checked; };
     $("person-form").onsubmit = submitPerson;
     $("user-form").onsubmit = submitUser;
+    $("edit-user-form").onsubmit = submitUserDetail;
+    $("edit-user-remove").onclick = removeUser;
 }
