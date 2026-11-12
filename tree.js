@@ -10,6 +10,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD = 6; // pixels; moving less than this still counts as a click
 const DURATION = 300; // ms, for each of the two animation phases
 const EASE = DURATION + "ms ease";
+const CHIP_H = 18;     // the "↑ 12" chips sit half over the top or bottom edge of a box
+const CHIP_RIGHT = 14; // distance from the box's right edge, away from where lines connect
 
 let offset = { x: 0, y: 0 }; // where the layer's (0, 0) is on screen; (0, 0) = the selected person
 let shown = new Map();       // id -> { x, y } of the boxes on screen now
@@ -46,8 +48,9 @@ export function renderTree(id) {
     const { nodes, lines } = layoutTree(id, persons, getRelations());
     const labelOf = relationshipLabeler(id, persons, getRelations());
     const svg = drawLines(lines);
+    const badges = drawBadges(nodes);
     const boxes = nodes.map((n) => drawBox(n, labelOf(n.id)));
-    $("tree-layer").replaceChildren(svg, ...boxes);
+    $("tree-layer").replaceChildren(svg, badges, ...boxes);
 
     const previous = shown;
     shown = new Map();
@@ -76,7 +79,7 @@ export function renderTree(id) {
             boxes[i].style.opacity = "0";
         }
     });
-    svg.style.opacity = "0";
+    svg.style.opacity = badges.style.opacity = "0";
 
     $("tree-layer").getBoundingClientRect(); // forces the browser to apply the start positions first
     for (const box of boxes) {
@@ -84,8 +87,33 @@ export function renderTree(id) {
         box.style.transform = "";
         box.style.opacity = "";
     }
-    svg.style.transition = "opacity " + EASE + " " + DURATION / 2 + "ms"; // lines appear once the boxes are on their way
-    svg.style.opacity = "";
+    for (const el of [svg, badges]) {
+        el.style.transition = "opacity " + EASE + " " + DURATION / 2 + "ms"; // lines and badges appear once the boxes are on their way
+        el.style.opacity = "";
+    }
+}
+
+// "↑ 12" on the top edge and "↓ 5" on the bottom edge of a box, near its right corner.
+// Lines only ever connect at the middle or the sides of a box, so that spot is always free.
+function drawBadges(nodes) {
+    const container = document.createElement("div");
+    for (const node of nodes) {
+        for (const [more, up] of [[node.moreUp, true], [node.moreDown, false]]) {
+            if (!more) continue;
+            const badge = document.createElement("button");
+            badge.type = "button";
+            badge.className = "tree-more";
+            badge.textContent = (up ? "↑ " : "↓ ") + more.people;
+            badge.title = more.people + " more " + (up ? "ancestor" : "descendant") + (more.people === 1 ? "" : "s")
+                + ", " + more.generations + " generation" + (more.generations === 1 ? "" : "s");
+            badge.style.left = node.x + node.width - CHIP_RIGHT + "px"; // its right side, via CSS translateX(-100%)
+            badge.style.top = (up ? node.y : node.y + BOX_H) - CHIP_H / 2 + "px";
+            badge.style.height = CHIP_H + "px";
+            badge.onclick = () => selectFromTree(node);
+            container.append(badge);
+        }
+    }
+    return container;
 }
 
 // Phase 1: slide the whole current tree until the clicked box is in the middle, then build the new tree

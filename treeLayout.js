@@ -13,9 +13,9 @@ const V_GAP = 64;  // between rows
 const ROW = BOX_H + V_GAP;
 const UP = 3;      // generations of ancestors
 const DOWN = 2;    // generations of descendants
-
 // persons: Map id -> person, relations: array of relation objects.
-// Returns { nodes: [{ id, x, y, selected?, duplicate? }], lines: [[[x, y], [x, y], ...], ...] }
+// Returns { nodes: [{ id, x, y, width, selected?, duplicate?, moreUp?, moreDown? }], lines: [[[x, y], ...], ...] }
+// moreUp / moreDown = { people, generations }: ancestors / descendants of that person who aren't in the tree.
 export function layoutTree(rootId, persons, relations) {
     const g = buildGraph(persons, relations);
     const out = { nodes: [], lines: [] };
@@ -32,7 +32,37 @@ export function layoutTree(rootId, persons, relations) {
         n.duplicate = count.get(n.id) > 1;
         n.width ??= BOX_W;
     });
+
+    // Where does the tree continue out of view? A box gets a "more" count in a direction when none of
+    // that person's parents (or children) are in the tree, but they do have some.
+    // E.g. the top row, the selected person's partner (their parents aren't shown), siblings (their children aren't shown).
+    const visible = new Set(out.nodes.map((n) => n.id));
+    const parentsOf = (id) => g.parentsOf(id).filter(Boolean);
+    for (const n of out.nodes) {
+        if (!parentsOf(n.id).some((p) => visible.has(p))) n.moreUp = countHidden(n.id, parentsOf, visible);
+        if (!g.childrenOf(n.id).some((c) => visible.has(c))) n.moreDown = countHidden(n.id, g.childrenOf, visible);
+    }
     return out;
+}
+
+// Everyone reachable by following `next` (parents, or children) from id who isn't in the tree,
+// each person counted once. Returns { people, generations } or undefined when there is nobody.
+function countHidden(id, next, visible) {
+    const seen = new Set([id]);
+    let frontier = [id];
+    let people = 0;
+    let generations = 0;
+    for (let gen = 1; frontier.length > 0; gen++) {
+        const found = [...new Set(frontier.flatMap(next))].filter((x) => !seen.has(x));
+        found.forEach((x) => seen.add(x));
+        const hidden = found.filter((x) => !visible.has(x)).length;
+        if (hidden > 0) {
+            people += hidden;
+            generations = gen;
+        }
+        frontier = found;
+    }
+    return people > 0 ? { people, generations } : undefined;
 }
 
 // ---------- Who is related to whom ----------
@@ -191,7 +221,7 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
                 // Later partners: a line over the earlier partners, each one higher and starting further left.
                 // The selected person has room up to just under the parents; a child must stay under
                 // the bar that connects them to their siblings.
-                const height = isRoot ? Math.min(16 + (k - 2) * 14, 52) : Math.min(12 + (k - 2) * 8, 28);
+                const height = isRoot ? Math.min(16 + (k - 2) * 14, 52) : Math.min(14 + (k - 2) * 8, 28); // starts at 14: leaves room for a "more" chip on the box edge
                 const startX = BOX_W - 16 - (k - 2) * 12;
                 unit.lines.push([[startX, 0], [startX, -height], [px + BOX_W / 2, -height], [px + BOX_W / 2, 0]]);
                 dropFromY = -height;

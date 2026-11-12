@@ -321,6 +321,29 @@ a.button {
     line-height: 1.2;
 }
 
+/* "↑ 12" / "↓ 5": more ancestors or descendants who aren't in the tree.
+   A chip half over the box edge; placed by its right side (see tree.js). */
+.tree-more {
+    position: absolute;
+    z-index: 1; /* above the box it sits on */
+    transform: translateX(-100%);
+    box-sizing: border-box;
+    padding: 0 8px;
+    border: 1px solid #ccc;
+    border-radius: 999px;
+    background: #fff;
+    color: #555;
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.tree-more:hover {
+    background: #f4f4f4;
+}
+
 /* "View details" and a ">" icon in the extra part of the selected box, behind a dividing line */
 .tree-details {
     flex: 1;
