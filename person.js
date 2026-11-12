@@ -1,30 +1,80 @@
-import { goTo } from "./router.js";
+import { goTo, goBack } from "./router.js";
 import { $, friendlyError } from "./ui.js";
 import { formatDate, lifespan, age } from "./dates.js";
-import { getPerson, getRelations, getHomePersonId, setHomePerson } from "./store.js";
+import { getPerson, getRelations, getHomePersonId, setHomePerson, getFile, getFiles } from "./store.js";
 import { fullName } from "./names.js";
 import { initRelations, openPicker, confirmRemove, openWedding } from "./relations.js";
+import { fileSections, renderFileView, fileActions } from "./filesPage.js";
+import { blobUrl } from "./storage.js";
+import { iconButton } from "./icons.js";
 
 let isAdmin = false;
+
+// Same width as the two-column layout in viewer.css
+const isDesktop = () => matchMedia("(min-width: 800px)").matches;
 
 export function initPerson(options) {
     isAdmin = options.isAdmin;
     if (isAdmin) initRelations();
+
+    // Desktop: the name appears in the left bar once the big name has scrolled out of view
+    new IntersectionObserver(([entry]) => {
+        $("person-bar-name").hidden = entry.isIntersecting;
+    }, { root: $("person-left-scroll") }).observe($("person-name"));
+
+    // Opening a file: on a phone that's a step back can undo (the file covers the whole screen);
+    // on desktop it's just the right column changing, so back leaves the page instead
+    for (const area of [$("person-files"), $("person-photo-link")]) {
+        area.addEventListener("click", (event) => {
+            const link = event.target.closest("a[href]");
+            if (!link) return;
+            event.preventDefault();
+            goTo(link.getAttribute("href"), { replace: isDesktop() });
+        });
+    }
 }
 
-export function renderPerson(id) {
+function personHash(id) {
+    return "#/person/" + encodeURIComponent(id);
+}
+
+// Closes the open file: on a phone a step back (opening it was a step), on desktop a swap
+function closeFile(id) {
+    if (isDesktop()) goTo(personHash(id), { replace: true });
+    else goBack({ fallback: personHash(id) });
+}
+
+// #/person/<id>, or #/person/<id>/file/<fileId> with that file open in the right column
+export function renderPerson(id, fileId = null) {
     const p = getPerson(id);
     if (!p) {
         goTo(isAdmin ? "#/people" : "#/tree", { replace: true });
         return;
     }
 
+    // On desktop each column scrolls on its own: the files start at the top every time,
+    // the person only when it's another person (so it stays put while you look through their files)
+    $("person-files-scroll").scrollTop = $("person-file-scroll").scrollTop = 0;
+    if ($("person-page").dataset.personId !== id) $("person-left-scroll").scrollTop = 0;
+    $("person-page").dataset.personId = id;
+
+    renderPhoto(p);
     $("person-name").textContent = fullName(p);
-    $("person-edit-link").hidden = !isAdmin;
-    $("person-edit-link").href = "#/person/edit/" + encodeURIComponent(id);
+    $("person-bar-name").textContent = fullName(p);
     $("person-facts").replaceChildren(...facts(p));
 
-    const rerender = () => renderPerson(id);
+    // Desktop: the left column's own bar. Back leaves the page (files never add a step there).
+    const editPerson = () => { location.hash = "#/person/edit/" + encodeURIComponent(id); };
+    $("person-bar-left").replaceChildren(iconButton("back", "Back", () => goBack({ fallback: "#/tree/" + encodeURIComponent(id) })));
+    $("person-bar-right").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
+    // Phone: the app's top bar shows the name (or the open file, see renderFiles)
+    $("title").textContent = fullName(p);
+    $("top-actions").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
+    $("person-description").textContent = p.description ?? "";
+    $("person-description").hidden = !p.description;
+
+    const rerender = () => renderPerson(id, fileId);
+    renderFiles(p, fileId, rerender);
     $("person-tree-link").href = "#/tree/" + encodeURIComponent(id);
 
     const isHome = getHomePersonId() === id;
@@ -51,6 +101,66 @@ export function renderPerson(id) {
         button.hidden = !isAdmin || (kind === "parent" && relatives.parents.length >= 2);
         button.onclick = () => openPicker(id, kind, rerender);
     });
+}
+
+// The profile photo above the name: the photo's display version, at the full width of the column.
+// Clicking it opens that photo on the right.
+let photoToken = null;
+function renderPhoto(p) {
+    const link = $("person-photo-link");
+    const img = $("person-photo");
+    const file = p.photo && getFile(p.photo.file);
+    const version = file?.storage && (file.storage.display ?? file.storage.original);
+    link.hidden = !version;
+    if (!version) return;
+
+    link.href = "#/person/" + encodeURIComponent(p.id) + "/file/" + encodeURIComponent(file.id);
+    img.alt = fullName(p);
+    const token = photoToken = {}; // ignore a slow download when another person is shown by then
+    if (img.dataset.path !== version.path) img.removeAttribute("src");
+    blobUrl(version.path).then((src) => {
+        if (photoToken !== token) return;
+        img.src = src;
+        img.dataset.path = version.path;
+    }).catch(() => { link.hidden = true; });
+}
+
+// The right column: all their files in sections per category, or the one file that's open
+function renderFiles(p, fileId, rerender) {
+    const open = fileId && getFile(fileId);
+    if (fileId && !open) {
+        goTo("#/person/" + encodeURIComponent(p.id), { replace: true }); // that file no longer exists
+        return;
+    }
+    $("person-page").classList.toggle("file-open", !!open); // on a phone, an open file gets the whole screen
+    $("person-files-overview").hidden = !!open;
+    $("person-file-open").hidden = !open;
+
+    if (open) {
+        const options = {
+            profileFor: p.id,
+            onChange: rerender,                  // the profile photo on the left changes
+            onDeleted: () => closeFile(p.id),    // back to all files, not away from the person
+        };
+        // Desktop: the file bar at the top of the right column
+        $("file-bar-left").replaceChildren(iconButton("back", "All files", () => closeFile(p.id)));
+        $("file-bar-title").textContent = open.title;
+        $("file-bar-right").replaceChildren(...fileActions(open, options));
+        // Phone: the app's top bar is the file bar (its back arrow undoes the step that opened the file)
+        $("title").textContent = open.title;
+        $("top-actions").replaceChildren(...fileActions(open, options));
+
+        renderFileView($("person-file-view"), open);
+        return;
+    }
+
+    const files = getFiles().filter((f) => f.people.includes(p.id));
+    $("person-files-empty").hidden = files.length > 0;
+    $("person-files").replaceChildren(...(files.length
+        ? fileSections(files, (f) => "#/person/" + encodeURIComponent(p.id) + "/file/" + encodeURIComponent(f.id))
+        : []));
+    $("person-add-file").hidden = !isAdmin;
+    $("person-add-file").href = "#/file/new/" + encodeURIComponent(p.id);
 }
 
 // The rows of the Born / Died list

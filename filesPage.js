@@ -1,36 +1,40 @@
-// The Files tab (everyone): a searchable, filterable grid, and the page of a single file.
+// Files: the Files tab, plus three pieces the person details page reuses:
+//   fileSections()   collapsible sections per category with file cards
+//   renderFileView() the file itself and its details, drawn into any container
+//   fileActions()    the buttons for a file's bar: download, edit, and the ⋯ menu
 
 import { goTo, goBack } from "./router.js";
 import { $, friendlyError } from "./ui.js";
 import { formatDate } from "./dates.js";
+import { db } from "./firebase.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { getFile, getFiles, getCategories, getPerson, deleteFile, setProfilePhoto } from "./store.js";
 import { fullName, normalizeName } from "./names.js";
-import { KIND_NAMES, youTubeId, formatSize } from "./files.js";
+import { KIND_NAMES, youTubeId, formatSize, extensionOf } from "./files.js";
 import { blobUrl, downloadFile, deletePaths, makeAvatar } from "./storage.js";
+import { iconButton } from "./icons.js";
+import { menuButton } from "./menu.js";
 
 const KIND_FILTERS = [["all", "All"], ["photo", "Photos"], ["video", "Videos"], ["audio", "Audio"], ["document", "Documents"], ["website", "Websites"]];
 const ICONS = { photo: "🖼️", video: "🎬", audio: "🎵", pdf: "📄", website: "🌐", other: "📎" };
+const COLLAPSED_KEY = "family-tree-collapsed-categories";
 
 let isAdmin = false;
-const filters = { kind: "all", category: "all", text: "" }; // kept while the site is open
-let showingId = null;
+const filters = { kind: "all", text: "" }; // kept while the site is open
 
 // PDFs and "other" files are both documents in the filter
 const filterGroup = (f) => (f.kind === "pdf" || f.kind === "other" ? "document" : f.kind);
+const newestFirst = (a, b) => b.updatedAt - a.updatedAt;
 
 export function initFiles(options) {
     isAdmin = options.isAdmin;
     $("files-search").oninput = () => {
         filters.text = $("files-search").value;
-        renderGrid();
-    };
-    $("files-category").onchange = () => {
-        filters.category = $("files-category").value;
-        renderGrid();
+        renderList();
     };
 }
 
-// ---------- The list ----------
+// ---------- The Files tab ----------
 
 export function renderFiles() {
     $("files-kinds").replaceChildren(...KIND_FILTERS.map(([key, label]) => {
@@ -44,21 +48,12 @@ export function renderFiles() {
         };
         return button;
     }));
-
-    const select = $("files-category");
-    select.replaceChildren(new Option("All categories", "all"), new Option("Uncategorized", ""),
-        ...getCategories().map((c) => new Option(c.name, c.id)));
-    select.value = filters.category;
-    if (select.value !== filters.category) filters.category = select.value = "all"; // that category was deleted
-    select.hidden = getCategories().length === 0;
-
     $("files-search").value = filters.text;
-    renderGrid();
+    renderList();
 }
 
 function matches(f) {
     if (filters.kind !== "all" && filterGroup(f) !== filters.kind) return false;
-    if (filters.category !== "all" && (f.category ?? "") !== filters.category) return false;
 
     // Every typed word must appear in the title, description or a linked person's name
     const words = normalizeName(filters.text).split(/\s+/).filter(Boolean);
@@ -67,9 +62,9 @@ function matches(f) {
     return words.every((w) => text.includes(w));
 }
 
-function renderGrid() {
+function renderList() {
     const all = getFiles();
-    const shown = all.filter(matches).sort((a, b) => b.updatedAt - a.updatedAt); // newest first
+    const shown = all.filter(matches).sort(newestFirst);
 
     const status = $("files-status");
     status.textContent = all.length === 0
@@ -77,10 +72,67 @@ function renderGrid() {
         : "No files match these filters.";
     status.hidden = shown.length > 0;
 
-    $("files-grid").replaceChildren(...shown.map(card));
+    $("files-sections").replaceChildren(...fileSections(shown, (f) => "#/file/" + encodeURIComponent(f.id)));
 }
 
-function card(f) {
+// ---------- Shared: sections per category ----------
+
+// One collapsible section per category (alphabetical), "Uncategorized" last, empty ones left out.
+// Without any categories at all there's just one grid, without a header.
+// linkFor(file) gives the address a card links to.
+export function fileSections(files, linkFor) {
+    const sorted = [...files].sort(newestFirst);
+    const categories = getCategories();
+    if (categories.length === 0) return [grid(sorted, linkFor)];
+
+    const known = new Set(categories.map((c) => c.id));
+    const groups = [...categories.map((c) => ({ key: c.id, name: c.name })), { key: "", name: "Uncategorized" }];
+    const collapsed = readCollapsed();
+
+    return groups.flatMap(({ key, name }) => {
+        const inGroup = sorted.filter((f) => (known.has(f.category) ? f.category : "") === key);
+        if (inGroup.length === 0) return [];
+
+        // <details> / <summary> is the browser's own open/close section
+        const section = document.createElement("details");
+        section.className = "file-section";
+        section.open = !collapsed.has(key);
+        section.ontoggle = () => {
+            const set = readCollapsed();
+            if (section.open) set.delete(key);
+            else set.add(key);
+            writeCollapsed(set);
+        };
+        const summary = document.createElement("summary");
+        summary.textContent = name + " (" + inGroup.length + ")";
+        section.append(summary, grid(inGroup, linkFor));
+        return [section];
+    });
+}
+
+// Which sections someone closed, remembered in this browser
+function readCollapsed() {
+    try {
+        return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY)) ?? []);
+    } catch {
+        return new Set();
+    }
+}
+
+function writeCollapsed(set) {
+    try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set]));
+    } catch { }
+}
+
+function grid(files, linkFor) {
+    const ul = document.createElement("ul");
+    ul.className = "file-grid";
+    ul.append(...files.map((f) => card(f, linkFor(f))));
+    return ul;
+}
+
+function card(f, href) {
     const thumb = document.createElement("div");
     thumb.className = "file-thumb";
     thumb.textContent = ICONS[f.kind];
@@ -92,10 +144,10 @@ function card(f) {
     title.textContent = f.title;
     const meta = document.createElement("div");
     meta.className = "muted";
-    meta.textContent = [KIND_NAMES[f.kind], f.date ? formatDate(f.date) : ""].filter(Boolean).join(" · ");
+    meta.textContent = [KIND_NAMES[f.kind], f.date ? formatDate(f.date) : ""].filter(Boolean).join(" • ");
 
     const link = document.createElement("a");
-    link.href = "#/file/" + encodeURIComponent(f.id);
+    link.href = href;
     link.append(thumb, title, meta);
     const li = document.createElement("li");
     li.append(link);
@@ -113,7 +165,7 @@ const thumbObserver = new IntersectionObserver((entries) => {
 
 async function showThumb(el) {
     const f = getFile(el.dataset.id);
-    const src = await thumbSource(f).catch(() => null);
+    const src = f && await thumbSource(f).catch(() => null);
     if (!src) return; // keep the icon
     const img = document.createElement("img");
     img.alt = "";
@@ -129,23 +181,47 @@ function thumbSource(f) {
     return Promise.resolve(yt ? "https://img.youtube.com/vi/" + yt + "/mqdefault.jpg" : null);
 }
 
-// ---------- One file ----------
+// ---------- The file page (Files tab) ----------
 
+// The app's own top bar is the file bar here: the file name in the middle, the buttons on the right
 export function renderFilePage(id) {
     const f = getFile(id);
     if (!f) {
         goTo("#/files", { replace: true });
         return;
     }
-    showingId = id;
+    $("title").textContent = f.title;
+    $("top-actions").replaceChildren(...fileActions(f));
+    renderFileView($("file-page"), f);
+}
 
-    $("file-page-title").textContent = f.title;
-    $("file-page-description").textContent = f.description ?? "";
-    $("file-page-description").hidden = !f.description;
-    $("file-page-facts").replaceChildren(...facts(f));
-    $("file-viewer").replaceChildren(...viewer(f));
-    renderPeople(f);
-    renderActions(f);
+// ---------- Shared: one file ----------
+
+// Draws the file itself and its details into `container` (the bar with buttons is separate: fileActions)
+export function renderFileView(container, f) {
+    // Downloads finish later; this token tells whether this container still shows this file by then
+    const token = {};
+    container.fileViewToken = token;
+    const alive = () => container.fileViewToken === token && container.isConnected;
+
+    const parts = [];
+    const viewerEl = document.createElement("div");
+    viewerEl.className = "file-viewer";
+    viewerEl.append(...viewer(f, viewerEl, alive));
+    parts.push(viewerEl);
+
+    if (f.description) {
+        const description = document.createElement("p");
+        description.className = "file-description";
+        description.textContent = f.description;
+        parts.push(description);
+    }
+
+    const factList = document.createElement("dl");
+    factList.className = "facts";
+    factList.append(...facts(f));
+    parts.push(factList, people(f));
+    container.replaceChildren(...parts);
 }
 
 function facts(f) {
@@ -167,9 +243,15 @@ function facts(f) {
 }
 
 // Returns the elements that show the file itself
-function viewer(f) {
+function viewer(f, viewerEl, alive) {
     const url = f.url;
     const original = f.storage?.original.path;
+
+    // Runs `use(src)` when the download is ready, unless something else is shown by then
+    const load = (promise, use) => promise.then((src) => { if (alive()) use(src); }).catch((error) => {
+        console.error("Could not load file:", error);
+        if (alive()) viewerEl.replaceChildren(note(friendlyError(error)));
+    });
 
     if (f.kind === "photo") {
         const img = document.createElement("img");
@@ -213,17 +295,17 @@ function viewer(f) {
         return [frame, open];
     }
 
-    if (f.kind === "website") return [note("This is a link to " + new URL(url).hostname + ". Use “Visit website” below to open it.")];
+    if (f.kind === "website") {
+        // Websites can't be shown inside the site (most block that), so a clear button to open it
+        const visit = document.createElement("a");
+        visit.className = "button";
+        visit.href = url;
+        visit.target = "_blank";
+        visit.rel = "noopener noreferrer";
+        visit.textContent = "Visit website ↗";
+        return [note("This is a link to " + new URL(url).hostname + "."), visit];
+    }
     return [note(ICONS.other + " No preview for this kind of file. Use the download button below.")];
-}
-
-// Runs `use(src)` when the download is ready, unless the user has opened another file meanwhile
-function load(promise, use) {
-    const id = showingId;
-    promise.then((src) => { if (showingId === id) use(src); }).catch((error) => {
-        console.error("Could not load file:", error);
-        if (showingId === id) $("file-viewer").replaceChildren(note(friendlyError(error)));
-    });
 }
 
 function note(text) {
@@ -233,92 +315,125 @@ function note(text) {
     return p;
 }
 
-function renderPeople(f) {
-    const people = f.people.map(getPerson).filter(Boolean);
-    const box = $("file-page-people");
-    box.hidden = people.length === 0;
+function people(f) {
+    const list = f.people.map(getPerson).filter(Boolean);
+    const box = document.createElement("div");
+    box.className = "chips-links";
+    box.hidden = list.length === 0;
     const label = document.createElement("span");
     label.className = "muted";
     label.textContent = "People: ";
-    box.replaceChildren(label, ...people.map((p) => {
+    box.append(label, ...list.map((p) => {
         const a = document.createElement("a");
         a.href = "#/person/" + encodeURIComponent(p.id);
         a.textContent = fullName(p);
         return a;
     }));
+    return box;
 }
 
-function renderActions(f) {
+// The buttons for a file's bar. options:
+//   profileFor:  a person id; admins then get "Use as / Remove as profile photo" for that person in the ⋯ menu
+//   onChange():  called after the profile photo changed, so the page around it can update
+//   onDeleted(): where to go after deleting (default: back)
+export function fileActions(f, options = {}) {
     const actions = [];
 
     if (f.source === "upload") {
         const { original, display } = f.storage;
-        actions.push(actionButton("Download original (" + formatSize(original.size) + ")", () => downloadFile(original.path, original.name)));
+        const getOriginal = () => downloadFile(original.path, original.name);
         if (display) {
             const smallName = original.name.replace(/\.[^.]+$/, "") + "." + display.path.split(".").pop();
-            actions.push(actionButton("Download smaller version (" + formatSize(display.size) + ")", () => downloadFile(display.path, smallName)));
+            actions.push(menuButton("download", "Download", [
+                { label: "Original (" + formatSize(original.size) + ")", onclick: getOriginal },
+                { label: "Smaller version (" + formatSize(display.size) + ")", onclick: () => downloadFile(display.path, smallName) },
+            ]));
+        } else {
+            actions.push(iconButton("download", "Download", () => getOriginal().catch((e) => alert(friendlyError(e)))));
         }
     } else {
-        const visit = document.createElement("a");
-        visit.className = "button";
-        visit.href = f.url;
-        visit.target = "_blank";
-        visit.rel = "noopener noreferrer";
-        visit.textContent = (f.kind === "website" ? "Visit website" : "Open link") + " ↗";
-        actions.push(visit);
+        actions.push(iconButton("external", f.kind === "website" ? "Visit website" : "Open link",
+            () => window.open(f.url, "_blank", "noopener,noreferrer")));
     }
 
-    if (isAdmin) {
-        const edit = document.createElement("a");
-        edit.className = "button";
-        edit.href = "#/file/edit/" + encodeURIComponent(f.id);
-        edit.textContent = "Edit";
-        actions.push(edit, actionButton("Delete", () => remove(f), "danger"));
-        actions.push(...profilePhotoButtons(f));
-    }
-    $("file-page-actions").replaceChildren(...actions);
+    if (!isAdmin) return actions;
+
+    actions.push(iconButton("pencil", "Edit", () => { location.hash = "#/file/edit/" + encodeURIComponent(f.id); }));
+
+    const more = [];
+    const profile = options.profileFor && profilePhotoItem(f, options.profileFor, options.onChange);
+    if (profile) more.push(profile);
+    more.push({ label: "File info", onclick: () => showFileInfo(f) });
+    more.push({ label: "Delete file", danger: true, onclick: () => remove(f, options.onDeleted) });
+    actions.push(menuButton("more", "More", more));
+    return actions;
 }
 
-// TEMPORARY HOME: moves to the person details page later.
-// For uploaded photos: per linked person, "Use as profile photo" or "Remove as profile photo".
-function profilePhotoButtons(f) {
+// For uploaded photos, on a person's page: "Use as profile photo" or "Remove as profile photo"
+function profilePhotoItem(f, personId, onChange) {
     const source = f.source === "upload" && f.kind === "photo" && (f.storage.thumb ?? f.storage.display);
-    if (!source) return []; // a linked photo can't be used: browsers don't let a site read pixels from another site's image
+    if (!source) return null; // a linked photo can't be used: browsers don't let a site read pixels from another site's image
 
-    return f.people.map(getPerson).filter(Boolean).map((p) => {
-        const isCurrent = p.photo?.file === f.id;
-        const label = (isCurrent ? "Remove as profile photo for " : "Use as profile photo for ") + fullName(p);
-        return actionButton(label, async () => {
+    const isCurrent = getPerson(personId)?.photo?.file === f.id;
+    return {
+        label: isCurrent ? "Remove as profile photo" : "Use as profile photo",
+        onclick: async () => {
             const photo = isCurrent ? null : { file: f.id, avatar: await makeAvatar(await blobUrl(source.path)) };
-            await setProfilePhoto(p.id, photo);
-            renderActions(f); // the button text changes
-        });
-    });
-}
-
-function actionButton(text, onclick, className = "") {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = text;
-    button.className = className;
-    button.onclick = async () => {
-        button.disabled = true;
-        try {
-            await onclick();
-        } catch (error) {
-            console.error(error);
-            alert(friendlyError(error));
-        } finally {
-            button.disabled = false;
-        }
+            await setProfilePhoto(personId, photo);
+            onChange?.();
+        },
     };
-    return button;
 }
 
-async function remove(f) {
+// ---------- File info (admins) ----------
+
+async function showFileInfo(f) {
+    const rows = [
+        ["Title", f.title],
+        ["Type", KIND_NAMES[f.kind]],
+    ];
+    if (f.source === "upload") {
+        const { original, display } = f.storage;
+        rows.push(
+            ["File type", original.type || extensionOf(original.name).toUpperCase() || "Unknown"],
+            ["Original file", original.name],
+            ["Original size", formatSize(original.size)],
+        );
+        if (display) rows.push(["Smaller version", formatSize(display.size)]);
+    } else {
+        rows.push(["Link", f.url]);
+    }
+    rows.push(
+        [f.source === "upload" ? "Uploaded on" : "Added on", f.createdAt ? new Date(f.createdAt).toLocaleString() : "Unknown"],
+        [f.source === "upload" ? "Uploaded by" : "Added by", f.uploadedBy ? "Loading…" : "Unknown"],
+    );
+
+    const list = $("file-info-list");
+    list.replaceChildren(...rows.flatMap(([label, value]) => {
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        dd.textContent = value;
+        return [dt, dd];
+    }));
+    $("file-info-dialog").showModal();
+
+    // uploadedBy is the uploader's email (the id of their user document); look up their current name
+    if (!f.uploadedBy) return;
+    const by = list.lastElementChild;
+    try {
+        const user = (await getDoc(doc(db, "users", f.uploadedBy))).data();
+        const name = user && [user.firstName, user.lastName].filter(Boolean).join(" ");
+        by.textContent = name ? name + " (" + f.uploadedBy + ")" : f.uploadedBy;
+    } catch {
+        by.textContent = f.uploadedBy;
+    }
+}
+
+async function remove(f, onDeleted) {
     if (!confirm("Delete “" + f.title + "”? This can't be undone.")) return;
     // The document first: if removing the stored files then fails, at worst an invisible file is left behind
     await deleteFile(f.id);
     if (f.source === "upload") await deletePaths(Object.values(f.storage).map((s) => s.path));
-    goBack();
+    (onDeleted ?? goBack)();
 }

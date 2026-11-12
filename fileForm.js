@@ -13,8 +13,8 @@ let people = [];       // ids of the people linked to this file, in the order th
 let previewUrl = null; // temporary link for the photo preview, freed again when no longer needed
 let editing = null;    // the file being edited, or null when adding a new one
 
-// Used by both #/file/new (id = null) and #/file/edit/<id>
-export function renderFileForm(id) {
+// Used by #/file/new (id = null), #/file/new/<personId> (that person already added) and #/file/edit/<id>
+export function renderFileForm(id, forPersonId = null) {
     editing = id ? getFile(id) : null;
     if (id && !editing) {
         goTo("#/files", { replace: true });
@@ -36,7 +36,8 @@ export function renderFileForm(id) {
     $("file-input").hidden = !!editing;
     showSource(editing?.source ?? "upload");
 
-    people = editing ? editing.people.filter((p) => getPerson(p)) : [];
+    people = editing ? editing.people.filter((p) => getPerson(p))
+        : forPersonId && getPerson(forPersonId) ? [forPersonId] : [];
     renderPeople();
     if (!editing) return;
 
@@ -178,7 +179,7 @@ async function submit(event) {
             uploaded = result.paths;
             data.storage = result.storage;
         }
-        await saveFile(id, data);
+        await saveFile(id, data, { isNew: !editing });
         goBack();
     } catch (error) {
         console.error("Could not save file:", error);

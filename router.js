@@ -60,28 +60,46 @@ function onHashChange() {
     route();
 }
 
-// "#/person/new" -> { key: "person-new", param: null }
-// "#/user/a%40b.com" -> { key: "user", param: "a@b.com" }, but only if the "user" route has param: true
+// "#/person/new"                -> { key: "person-new", params: [] }
+// "#/user/a%40b.com"            -> { key: "user", params: ["a@b.com"] }, if the "user" route has param: true/"optional"
+// "#/person/abc/file/xyz"       -> { key: "person-file", params: ["abc", "xyz"] }, via pattern: "person/:id/file/:fileId"
 function parseHash() {
     const path = location.hash.slice(2);
+    const decode = (text) => {
+        try {
+            return decodeURIComponent(text);
+        } catch {
+            return null; // malformed %-encoding
+        }
+    };
+
+    // Routes with a pattern: every ":name" part becomes a parameter, the other parts must match exactly
+    const parts = path.split("/");
+    for (const [key, def] of Object.entries(routes)) {
+        if (!def.pattern) continue;
+        const pattern = def.pattern.split("/");
+        if (pattern.length !== parts.length) continue;
+        const params = [];
+        const fits = pattern.every((p, i) => {
+            if (!p.startsWith(":")) return p === parts[i];
+            params.push(decode(parts[i]));
+            return params.at(-1); // an empty or broken parameter doesn't fit
+        });
+        if (fits) return { key, params };
+    }
+
     const key = path.replace(/\//g, "-") || "tree";
-    if (routes[key]) return { key, param: null };
+    if (routes[key]) return { key, params: [] };
 
     const slash = path.lastIndexOf("/");
-    if (slash <= 0) return { key, param: null };
-
     const baseKey = path.slice(0, slash).replace(/\//g, "-");
-    if (!routes[baseKey]?.param) return { key, param: null };
-
-    try {
-        return { key: baseKey, param: decodeURIComponent(path.slice(slash + 1)) || null };
-    } catch {
-        return { key: baseKey, param: null }; // malformed %-encoding
-    }
+    const param = decode(path.slice(slash + 1));
+    if (slash <= 0 || !routes[baseKey]?.param) return { key, params: [] };
+    return { key: baseKey, params: param ? [param] : [] };
 }
 
 function route() {
-    const { key, param } = parseHash();
+    const { key, params } = parseHash();
     const def = routes[key];
 
     // Unknown screen, or an admin screen for someone who isn't an admin: go to the tree.
@@ -89,13 +107,13 @@ function route() {
         goTo("#/tree", { replace: true });
         return;
     }
-    // parent can be a fixed hash or a function of the parameter, e.g. (id) => "#/person/" + id
+    // parent can be a fixed hash or a function of the parameters, e.g. (id) => "#/person/" + id
     const parent = typeof def.parent !== "function" ? def.parent
-        : param !== null ? def.parent(param) : null;
+        : params.length > 0 ? def.parent(...params) : null;
 
     // param: true = required, param: "optional" = may be left out.
     // A screen that needs a parameter but didn't get one: go to its parent.
-    if (def.param === true && param === null) {
+    if (def.param === true && params.length === 0) {
         goTo(parent ?? "#/tree", { replace: true });
         return;
     }
@@ -103,7 +121,9 @@ function route() {
 
     const screenId = "screen-" + (def.screen ?? key);
     document.querySelectorAll(".screen").forEach((s) => (s.hidden = s.id !== screenId));
-    $("title").textContent = def.title;
+    document.body.dataset.screen = screenId; // lets CSS style per screen (e.g. no top bar on the details page on desktop)
+    $("title").textContent = def.title;      // a screen may replace this with something specific (a name)
+    $("top-actions").replaceChildren();      // and may put its own buttons here
     $("back-button").hidden = !parent;
 
     const addLink = $("add-button");
@@ -115,5 +135,5 @@ function route() {
     });
 
     $("view").scrollTop = 0;
-    if (def.render) def.render(param);
+    if (def.render) def.render(...(params.length > 0 ? params : [null])); // render(null) = "no parameter", as before
 }

@@ -63,6 +63,7 @@ export function renderPersonForm(id) {
     $("given-names").value = p.givenNames ?? "";
     $("surname").value = p.surname ?? "";
     $("nickname").value = p.nickname ?? "";
+    $("person-description-input").value = p.description ?? "";
     $("gender").value = p.gender;
     fillDate("birth", p.birthDate);
     $("deceased").checked = p.deceased === true;
@@ -106,6 +107,8 @@ async function submitPerson(event) {
     if (givenNames) person.givenNames = givenNames;
     if (surname) person.surname = surname;
     if (nickname) person.nickname = nickname;
+    const description = $("person-description-input").value.trim();
+    if (description) person.description = description;
     // The profile photo isn't on this form; keep it, because saving replaces the whole document
     const photo = editingPersonId && getPerson(editingPersonId)?.photo;
     if (photo) person.photo = photo;

@@ -1,7 +1,7 @@
 // All people and relations, kept in memory and in localStorage.
 // meta/version = time of the last change; every write here updates it (the rules require that).
 
-import { db } from "./firebase.js";
+import { db, myEmail } from "./firebase.js";
 import { collection, doc, getDoc, getDocs, query, where, writeBatch, serverTimestamp, deleteField }
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
@@ -90,7 +90,9 @@ async function load() {
 // Firestore Timestamps can't go into JSON, so updatedAt is kept as milliseconds
 function fromDoc(d) {
     const data = d.data();
-    return { id: d.id, ...data, updatedAt: data.updatedAt?.toMillis() ?? 0 };
+    const result = { id: d.id, ...data, updatedAt: data.updatedAt?.toMillis() ?? 0 };
+    if (data.createdAt) result.createdAt = data.createdAt.toMillis(); // files: when it was uploaded
+    return result;
 }
 
 // ---------- Cache ----------
@@ -257,10 +259,28 @@ export function newFileId() {
     return doc(collection(db, "files")).id;
 }
 
-export async function saveFile(id, data) {
-    await commit((batch) => batch.set(doc(db, "files", id), { ...data, updatedAt: serverTimestamp() }));
+// isNew: also stores when it was uploaded and by whom (your email = the id of your user document).
+// Editing only changes the form's fields, so createdAt and uploadedBy are never touched (the rules check that).
+export async function saveFile(id, data, { isNew }) {
+    const ref = doc(db, "files", id);
+    const { createdAt, uploadedBy, ...fields } = data;
 
-    files.set(id, { id, ...data, updatedAt: Date.now() });
+    if (isNew) {
+        await commit((batch) => batch.set(ref, { ...fields, createdAt: serverTimestamp(), uploadedBy: myEmail(), updatedAt: serverTimestamp() }));
+        files.set(id, { id, ...fields, createdAt: Date.now(), uploadedBy: myEmail(), updatedAt: Date.now() });
+    } else {
+        const update = { ...fields, updatedAt: serverTimestamp() };
+        for (const key of ["description", "date", "category"]) {
+            if (!(key in fields)) update[key] = deleteField(); // cleared on the form
+        }
+        await commit((batch) => batch.update(ref, update));
+
+        const old = files.get(id);
+        const kept = {};
+        if (old.createdAt) kept.createdAt = old.createdAt;
+        if (old.uploadedBy) kept.uploadedBy = old.uploadedBy;
+        files.set(id, { id, ...kept, ...fields, updatedAt: Date.now() });
+    }
     writeCache();
 }
 

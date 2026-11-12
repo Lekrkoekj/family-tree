@@ -10,42 +10,125 @@ body {
     grid-template-rows: auto 1fr auto;
     /* top bar, screens (takes the rest), bottom bar */
     font-family: system-ui, sans-serif;
+    background: #fff; /* explicit, so it never depends on the browser's own background */
 }
 
-/* ---------- Top bar ---------- */
-/* Three fixed columns. Items are placed in explicit columns, so the title stays centred
-   even when the back or + button is hidden. */
-#top-bar {
+/* ---------- Bars (the top bar, and the bars at the top of the details page columns) ---------- */
+/* Left and right get the same width (1fr each), so the title in the middle is always centred,
+   however many buttons there are on either side. A long title gets "…". */
+.bar {
     display: grid;
-    grid-template-columns: 3.5rem 1fr 3.5rem;
+    grid-template-columns: 1fr minmax(0, auto) 1fr;
     align-items: center;
+    gap: 8px;
+    min-height: 52px;
+    padding: 0 8px;
+    box-sizing: border-box;
     border-bottom: 1px solid #ddd;
+    background: #fff;
 }
 
-#top-bar h1 {
+/* Each part has its own column, so a hidden title leaves its column empty instead of
+   the right-hand buttons sliding into the middle */
+.bar-left {
+    grid-column: 1;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.bar-right {
+    grid-column: 3;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 4px;
+}
+
+.bar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.bar-title {
     grid-column: 2;
     margin: 0;
-    padding: 14px 0;
+    overflow: hidden;
     font-size: 1.25rem;
     text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-#back-button {
-    grid-column: 1;
+/* Round, borderless buttons with an icon (back, download, pencil, ...) */
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     border: 0;
+    border-radius: 50%;
     background: none;
+    color: inherit;
     font-size: 1.5rem;
-    padding: 8px 0;
     cursor: pointer;
 }
 
+.icon-button:hover {
+    background: #f0f0f0;
+}
+
+.icon-button svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Dropdown menus (download options, the ⋯ menu) */
+.menu-wrapper {
+    position: relative;
+}
+
+.menu-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 10;
+    display: grid;
+    min-width: 200px;
+    padding: 4px 0;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.menu-list button {
+    padding: 10px 14px;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 0.95rem;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.menu-list button:hover {
+    background: #f4f4f4;
+}
+
 #add-button {
-    grid-column: 3;
-    text-align: center;
-    text-decoration: none;
+    padding: 0 8px;
     color: inherit;
     font-size: 1.75rem;
-    padding: 4px 0;
+    text-decoration: none;
 }
 
 /* ---------- Screens ---------- */
@@ -161,6 +244,125 @@ body {
 }
 
 /* ---------- Person details ---------- */
+/* Phone: one column (person, then files) that scrolls with the page.
+   Desktop: the person on the left, files on the right, a line between them. Each column is a bar
+   with a scrolling area below it, so the scroll bar sits next to the content and the bars run
+   all the way to the line. */
+.person-page {
+    display: grid;
+    gap: 24px;
+}
+
+/* The bars of the columns (on a phone only "Photos & documents" is shown, as a header) */
+.column-bar {
+    margin-bottom: 12px;
+    padding: 0;
+}
+
+@media (max-width: 799px) {
+    /* An open file gets the whole screen, and the app's top bar does what the column bars do on desktop */
+    .person-page.file-open .person-left,
+    #person-bar,
+    #file-bar {
+        display: none;
+    }
+}
+
+@media (min-width: 800px) {
+    /* No app top bar on the details page; the columns have their own */
+    body[data-screen="screen-person"] #top-bar {
+        display: none;
+    }
+
+    #screen-person {
+        height: 100%;
+        box-sizing: border-box;
+        padding: 0;
+    }
+
+    .person-page {
+        grid-template-columns: 340px 1fr; /* the person column stays narrow, also on big screens */
+        gap: 0;
+        height: 100%;                     /* exactly the screen's height, so the columns can scroll */
+    }
+
+    .person-left {
+        border-right: 1px solid #ddd;
+    }
+
+    /* A column, and on the right each of its two views: a bar on top, the rest scrolls */
+    .person-left,
+    .person-right,
+    .column-pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0; /* without this the column grows with its content and nothing scrolls */
+    }
+
+    .column-pane {
+        flex: 1;
+    }
+
+    .column-bar {
+        flex: none;
+        margin-bottom: 0;
+        padding: 0 8px;
+    }
+
+    .column-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        /* The 16px at the sides also leaves room for overlay scroll bars (e.g. Firefox on Windows 11),
+           which are drawn over the content; "gutter" reserves room for normal scroll bars */
+        padding: 12px 16px 16px;
+        scrollbar-gutter: stable;
+    }
+}
+
+.person-photo {
+    display: block;
+    margin-bottom: 12px;
+}
+
+.person-photo img {
+    display: block;
+    width: 100%;
+    height: auto; /* keeps the photo's own shape */
+    border-radius: 10px;
+}
+
+.person-description {
+    margin: 0 0 16px;
+    font-style: italic;
+    white-space: pre-wrap; /* keeps the line breaks typed in the description */
+}
+
+/* Collapsible category sections with file cards */
+.file-section {
+    margin-bottom: 12px;
+}
+
+.file-section summary {
+    padding: 6px 0;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.file-section .file-grid {
+    margin-top: 6px;
+}
+
+/* "‹ All files" above an open file */
+.back-link {
+    margin-bottom: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
 .person-heading {
     display: flex;
     justify-content: space-between;
@@ -502,6 +704,10 @@ a.button {
 
 .file-viewer audio {
     width: 100%;
+}
+
+.file-viewer .button {
+    justify-self: start; /* its own width, not the whole row */
 }
 
 .video-frame {

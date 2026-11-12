@@ -10,10 +10,13 @@
 </head>
 
 <body hidden>
-    <header id="top-bar">
-        <button id="back-button" aria-label="Back" hidden>&larr;</button>
-        <h1 id="title">Family Tree</h1>
-        <a id="add-button" href="#" aria-label="Add" hidden>+</a>
+    <header id="top-bar" class="bar">
+        <div class="bar-left"><button id="back-button" class="icon-button" aria-label="Back" hidden>&larr;</button></div>
+        <h1 id="title" class="bar-title">Family Tree</h1>
+        <div class="bar-right">
+            <div id="top-actions" class="bar-actions"></div>
+            <a id="add-button" href="#" aria-label="Add" hidden>+</a>
+        </div>
     </header>
     <main id="view">
         <!-- FAMILY TREE SCREEN -->
@@ -63,34 +66,74 @@
 
         <!-- PERSON DETAILS SCREEN -->
         <section class="screen" id="screen-person" hidden>
-            <div id="person-details">
-                <div class="person-heading">
-                    <h2 id="person-name"></h2>
-                    <a id="person-edit-link" class="button" hidden>Edit</a>
+          <!-- Desktop: two columns, each a bar on top with a scrolling area below it (so the
+               scroll bar sits next to the content, never next to the bar). Phone: one column. -->
+          <div id="person-page" class="person-page">
+            <!-- LEFT (on a phone: top): the person -->
+            <div id="person-details" class="person-left">
+                <!-- Desktop only (on a phone the app's top bar does this) -->
+                <div id="person-bar" class="bar column-bar">
+                    <div class="bar-left" id="person-bar-left"></div>
+                    <h1 id="person-bar-name" class="bar-title" hidden></h1>
+                    <div class="bar-right" id="person-bar-right"></div>
                 </div>
-                <dl id="person-facts" class="facts"></dl>
-                <div class="person-actions">
-                    <a id="person-tree-link" class="button">View in tree</a>
-                    <button id="person-set-home" hidden>Set as home person</button>
-                    <span id="person-is-home" class="muted" hidden>Home person</span>
-                </div>
+                <div id="person-left-scroll" class="column-scroll">
+                    <a id="person-photo-link" class="person-photo" hidden><img id="person-photo" alt=""></a>
+                    <div class="person-heading">
+                        <h2 id="person-name"></h2>
+                    </div>
+                    <dl id="person-facts" class="facts"></dl>
+                    <p id="person-description" class="person-description" hidden></p>
+                    <div class="person-actions">
+                        <a id="person-tree-link" class="button">View in tree</a>
+                        <button id="person-set-home" hidden>Set as home person</button>
+                        <span id="person-is-home" class="muted" hidden>Home person</span>
+                    </div>
 
-                <div class="section-header">
-                    <h3 class="list-header">Parents</h3>
-                    <button class="add-relative" data-kind="parent" hidden>+ Add</button>
+                    <div class="section-header">
+                        <h3 class="list-header">Parents</h3>
+                        <button class="add-relative" data-kind="parent" hidden>+ Add</button>
+                    </div>
+                    <ul id="person-parents" class="list"></ul>
+                    <div class="section-header">
+                        <h3 class="list-header">Partners</h3>
+                        <button class="add-relative" data-kind="partner" hidden>+ Add</button>
+                    </div>
+                    <ul id="person-partners" class="list"></ul>
+                    <div class="section-header">
+                        <h3 class="list-header">Children</h3>
+                        <button class="add-relative" data-kind="child" hidden>+ Add</button>
+                    </div>
+                    <ul id="person-children" class="list"></ul>
                 </div>
-                <ul id="person-parents" class="list"></ul>
-                <div class="section-header">
-                    <h3 class="list-header">Partners</h3>
-                    <button class="add-relative" data-kind="partner" hidden>+ Add</button>
-                </div>
-                <ul id="person-partners" class="list"></ul>
-                <div class="section-header">
-                    <h3 class="list-header">Children</h3>
-                    <button class="add-relative" data-kind="child" hidden>+ Add</button>
-                </div>
-                <ul id="person-children" class="list"></ul>
             </div>
+
+            <!-- RIGHT (on a phone: below): their files, or one open file -->
+            <div class="person-right">
+                <div id="person-files-overview" class="column-pane">
+                    <div class="bar column-bar">
+                        <div class="bar-left"></div>
+                        <h1 class="bar-title">Photos &amp; documents</h1>
+                        <div class="bar-right"><a id="person-add-file" class="button" hidden>+ Add</a></div>
+                    </div>
+                    <div id="person-files-scroll" class="column-scroll">
+                        <p id="person-files-empty" class="muted" hidden>No photos or documents yet.</p>
+                        <div id="person-files"></div>
+                    </div>
+                </div>
+                <div id="person-file-open" class="column-pane" hidden>
+                    <!-- Desktop only (on a phone the app's top bar is the file bar) -->
+                    <div id="file-bar" class="bar column-bar">
+                        <div class="bar-left" id="file-bar-left"></div>
+                        <h1 id="file-bar-title" class="bar-title"></h1>
+                        <div class="bar-right" id="file-bar-right"></div>
+                    </div>
+                    <div id="person-file-scroll" class="column-scroll">
+                        <div id="person-file-view"></div>
+                    </div>
+                </div>
+            </div>
+          </div>
         </section>
 
         <!-- ADD / EDIT PERSON SCREEN -->
@@ -123,6 +166,8 @@
                     <input id="death-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
                 </fieldset>
 
+                <textarea id="person-description-input" placeholder="Description (optional)" maxlength="5000" rows="4"></textarea>
+
                 <p id="person-error" class="error" hidden></p>
                 <button id="person-submit" type="submit">Add person</button>
                 <button id="person-delete" type="button" class="danger" hidden>Delete person</button>
@@ -134,10 +179,9 @@
             <div class="file-filters">
                 <input id="files-search" type="search" placeholder="Search by title, description or person" autocomplete="off">
                 <div id="files-kinds" class="filter-buttons"></div>
-                <select id="files-category"></select>
             </div>
             <p id="files-status" class="muted" hidden></p>
-            <ul id="files-grid" class="file-grid"></ul>
+            <div id="files-sections"></div>
         </section>
 
         <!-- FILE CATEGORIES (admins) -->
@@ -155,12 +199,7 @@
 
         <!-- FILE PAGE -->
         <section class="screen" id="screen-file" hidden>
-            <h2 id="file-page-title"></h2>
-            <div id="file-viewer" class="file-viewer"></div>
-            <p id="file-page-description" class="file-description"></p>
-            <dl id="file-page-facts" class="facts"></dl>
-            <div id="file-page-people" class="chips-links"></div>
-            <div id="file-page-actions" class="person-actions"></div>
+            <div id="file-page"></div>
         </section>
 
         <!-- ADD FILE SCREEN -->
@@ -283,6 +322,13 @@
         </form>
     </dialog>
 
+    <!-- FILE INFO (admins) -->
+    <dialog id="file-info-dialog">
+        <h2>File info</h2>
+        <dl id="file-info-list" class="facts"></dl>
+        <form method="dialog"><button>Close</button></form>
+    </dialog>
+
     <!-- WEDDING DATE -->
     <dialog id="wedding-dialog">
         <h2 id="wedding-title"></h2>
@@ -337,11 +383,12 @@
             "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", render: renderPersonForm },
             "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: (id) => "#/person/" + id, screen: "person-form", param: true, render: renderPersonForm },
             "person": { title: "Person", tab: "tree", parent: (id) => "#/tree/" + id, param: true, render: renderPerson },
+            "person-file": { pattern: "person/:id/file/:fileId", title: "Person", tab: "tree", parent: (id) => "#/person/" + id, screen: "person", render: renderPerson },
 
             "files": { title: "Files", tab: "files", add: "#/file/new", render: renderFiles },
             "file": { title: "File", tab: "files", parent: "#/files", param: true, render: renderFilePage },
             "categories": { title: "File categories", tab: "admin", admin: true, parent: "#/admin", render: renderCategories },
-            "file-new": { title: "Add file", tab: "files", admin: true, parent: "#/files", render: renderFileForm },
+            "file-new": { title: "Add file", tab: "files", admin: true, parent: "#/files", param: "optional", render: (personId) => renderFileForm(null, personId) },
             "file-edit": { title: "Edit file", tab: "files", admin: true, parent: (id) => "#/file/" + id, param: true, screen: "file-new", render: renderFileForm },
 
             "users": { title: "Users", tab: "admin", admin: true, parent: "#/admin", add: "#/user/new", render: renderUsers },

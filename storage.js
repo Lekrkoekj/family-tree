@@ -18,12 +18,20 @@ export function blobUrl(path) {
     return blobUrls.get(path);
 }
 
-// Saves a stored file to the user's computer under the given name
+// Saves a stored file to the user's computer under the given name.
+// The file is handed over as a "generic file" (application/octet-stream): otherwise a browser may open
+// file types it can show itself in a new tab instead (Firefox does that with WebP images).
 export async function downloadFile(path, name) {
+    const original = await (await fetch(await blobUrl(path))).blob();
+    const url = URL.createObjectURL(new Blob([original], { type: "application/octet-stream" }));
+
     const a = document.createElement("a");
-    a.href = await blobUrl(path);
+    a.href = url;
     a.download = name;
+    document.body.append(a); // some browsers only follow links that are in the page
     a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000); // free the copy once the download has started
 }
 
 export const MAX_FILE_SIZE = 100 * 1024 * 1024; // the Storage rules allow just under this
