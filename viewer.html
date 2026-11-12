@@ -79,6 +79,9 @@
                 </div>
                 <div id="person-left-scroll" class="column-scroll">
                     <a id="person-photo-link" class="person-photo" hidden><img id="person-photo" alt=""></a>
+                    <!-- Editing: the person form is moved in here, the view part below is hidden -->
+                    <div id="person-edit-area" hidden></div>
+                    <div id="person-view-part">
                     <div class="person-heading">
                         <h2 id="person-name"></h2>
                     </div>
@@ -105,6 +108,7 @@
                         <button class="add-relative" data-kind="child" hidden>+ Add</button>
                     </div>
                     <ul id="person-children" class="list"></ul>
+                    </div>
                 </div>
             </div>
 
@@ -156,15 +160,27 @@
                     <input id="birth-day" placeholder="DD" maxlength="2" inputmode="numeric">
                     <input id="birth-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
                 </fieldset>
+                <input id="birth-place" placeholder="Birth place (optional)" maxlength="200">
 
                 <label><input id="deceased" type="checkbox"> Deceased</label>
 
-                <fieldset id="death-date" hidden>
-                    <legend>Death date</legend>
-                    <input id="death-month" placeholder="MM" maxlength="2" inputmode="numeric">
-                    <input id="death-day" placeholder="DD" maxlength="2" inputmode="numeric">
-                    <input id="death-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
-                </fieldset>
+                <!-- Only shown when "Deceased" is ticked -->
+                <div id="death-fields" class="form-group" hidden>
+                    <fieldset id="death-date">
+                        <legend>Death date</legend>
+                        <input id="death-month" placeholder="MM" maxlength="2" inputmode="numeric">
+                        <input id="death-day" placeholder="DD" maxlength="2" inputmode="numeric">
+                        <input id="death-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
+                    </fieldset>
+                    <input id="death-place" placeholder="Death place (optional)" maxlength="200">
+                    <fieldset id="burial-date">
+                        <legend>Burial date</legend>
+                        <input id="burial-month" placeholder="MM" maxlength="2" inputmode="numeric">
+                        <input id="burial-day" placeholder="DD" maxlength="2" inputmode="numeric">
+                        <input id="burial-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
+                    </fieldset>
+                    <input id="burial-place" placeholder="Burial place (optional)" maxlength="200">
+                </div>
 
                 <textarea id="person-description-input" placeholder="Description (optional)" maxlength="5000" rows="4"></textarea>
 
@@ -340,6 +356,7 @@
                 <input id="wedding-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
             </fieldset>
             <p class="muted">Leave all three empty to remove the date.</p>
+            <input id="wedding-place" placeholder="Wedding place (optional)" maxlength="200">
             <p id="wedding-error" class="error" hidden></p>
             <button id="wedding-submit" type="submit">Save</button>
             <button id="wedding-cancel" type="button">Cancel</button>
@@ -381,7 +398,7 @@
 
             "people": { title: "People", tab: "admin", admin: true, parent: "#/admin", add: "#/person/new", render: renderPeople },
             "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", render: renderPersonForm },
-            "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: (id) => "#/person/" + id, screen: "person-form", param: true, render: renderPersonForm },
+            "person-edit": { pattern: "person/:id/edit", title: "Edit person", tab: "tree", admin: true, parent: (id) => "#/person/" + id, screen: "person", render: (id) => renderPerson(id, null, true) },
             "person": { title: "Person", tab: "tree", parent: (id) => "#/tree/" + id, param: true, render: renderPerson },
             "person-file": { pattern: "person/:id/file/:fileId", title: "Person", tab: "tree", parent: (id) => "#/person/" + id, screen: "person", render: renderPerson },
 

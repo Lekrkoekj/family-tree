@@ -232,13 +232,18 @@ export async function removeRelation(id) {
     writeCache();
 }
 
-// date = "YYYY", "YYYY-MM", "YYYY-MM-DD", or null to remove it
-export async function setWeddingDate(id, date) {
-    await commit((batch) => batch.update(doc(db, "relations", id), { weddingDate: date ?? deleteField() }));
+// date = "YYYY", "YYYY-MM", "YYYY-MM-DD" or null; place = text or null. null removes it.
+export async function setWedding(id, date, place) {
+    await commit((batch) => batch.update(doc(db, "relations", id), {
+        weddingDate: date ?? deleteField(),
+        weddingPlace: place ?? deleteField(),
+    }));
 
     const relation = { ...relations.get(id) };
-    if (date) relation.weddingDate = date;
-    else delete relation.weddingDate;
+    for (const [key, value] of [["weddingDate", date], ["weddingPlace", place]]) {
+        if (value) relation[key] = value;
+        else delete relation[key];
+    }
     relations.set(id, relation);
     writeCache();
 }

@@ -1,7 +1,7 @@
 import { db, myEmail } from "./firebase.js";
 import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
-import { goBack, goTo } from "./router.js";
+import { goBack, goTo, setLeaveGuard } from "./router.js";
 import { $, showError, friendlyError, displayName } from "./ui.js";
 import { lifespan, readDate, fillDate } from "./dates.js";
 import { getPerson, getPersons, savePerson, deletePerson } from "./store.js";
@@ -40,10 +40,14 @@ export function renderPeople() {
 
 let editingPersonId = null; // null = adding a new person
 
-// Used by both #/person/new (id = null) and #/person/edit/<id>
-export function renderPersonForm(id) {
-    $("person-form").reset();
-    $("death-date").hidden = true;
+// #/person/new (id = null) shows the form on its own screen. Editing (#/person/<id>/edit) puts the same
+// form inside the details page: `container` is where it goes. There is only one form; append() moves it.
+export function renderPersonForm(id, container = null) {
+    const form = $("person-form");
+    (container ?? $("screen-person-form")).append(form);
+    form.classList.toggle("inline", !!container); // inline: Save is in the bar above it
+    form.reset();
+    $("death-fields").hidden = true;
     $("person-error").hidden = true;
 
     const p = id ? getPerson(id) : null;
@@ -66,9 +70,18 @@ export function renderPersonForm(id) {
     $("person-description-input").value = p.description ?? "";
     $("gender").value = p.gender;
     fillDate("birth", p.birthDate);
+    $("birth-place").value = p.birthPlace ?? "";
     $("deceased").checked = p.deceased === true;
-    $("death-date").hidden = !p.deceased;
+    $("death-fields").hidden = !p.deceased;
     fillDate("death", p.deathDate);
+    $("death-place").value = p.deathPlace ?? "";
+    fillDate("burial", p.burialDate);
+    $("burial-place").value = p.burialPlace ?? "";
+}
+
+// Everything that's filled in, as one string: comparing two of these tells whether anything changed
+export function personFormSnapshot() {
+    return [...$("person-form").elements].map((el) => (el.type === "checkbox" ? el.checked : el.value)).join("\u0001");
 }
 
 async function removePerson() {
@@ -80,6 +93,7 @@ async function removePerson() {
     try {
         await deletePerson(id);
         // Skip both this edit screen and the deleted person's details page
+        setLeaveGuard(null);
         goBack({ steps: 2, fallback: "#/people" });
     } catch (error) {
         console.error("Could not delete person:", error);
@@ -116,18 +130,31 @@ async function submitPerson(event) {
     const birth = readDate("birth", "Birth date");
     if (birth.error) return showError(errorEl, birth.error);
     if (birth.value) person.birthDate = birth.value;
+    const birthPlace = $("birth-place").value.trim();
+    if (birthPlace) person.birthPlace = birthPlace;
 
     if ($("deceased").checked) {
         person.deceased = true;
-        // Only read the death fields when "Deceased" is ticked. Old values may still sit in the inputs.
+        // Only read these when "Deceased" is ticked. Old values may still sit in the inputs.
         const death = readDate("death", "Death date");
         if (death.error) return showError(errorEl, death.error);
         if (death.value) person.deathDate = death.value;
+        const burial = readDate("burial", "Burial date");
+        if (burial.error) return showError(errorEl, burial.error);
+        if (burial.value) person.burialDate = burial.value;
+        for (const [field, inputId] of [["deathPlace", "death-place"], ["burialPlace", "burial-place"]]) {
+            const value = $(inputId).value.trim();
+            if (value) person[field] = value;
+        }
     }
 
-    // Compare years only; both are 4-digit strings so a text comparison works
-    if (person.birthDate && person.deathDate && person.deathDate.slice(0, 4) < person.birthDate.slice(0, 4)) {
+    // Compare years only; they are 4-digit strings so a text comparison works
+    const year = (date) => date?.slice(0, 4);
+    if (person.deathDate && person.birthDate && year(person.deathDate) < year(person.birthDate)) {
         return showError(errorEl, "The death date can't be before the birth date.");
+    }
+    if (person.burialDate && person.deathDate && year(person.burialDate) < year(person.deathDate)) {
+        return showError(errorEl, "The burial date can't be before the death date.");
     }
 
     const submit = $("person-submit");
@@ -135,6 +162,7 @@ async function submitPerson(event) {
     try {
         if (editingPersonId) {
             await savePerson(editingPersonId, person);
+            setLeaveGuard(null); // saved, so nothing to discard
             goBack();
         } else {
             // Replace, so going back from the new person skips the filled-in form
@@ -361,7 +389,7 @@ async function submitUser(event) {
 
 // Called once for admins. Uses onsubmit = (not addEventListener) so calling it twice can't stack handlers.
 export function initAdmin() {
-    $("deceased").onchange = () => { $("death-date").hidden = !$("deceased").checked; };
+    $("deceased").onchange = () => { $("death-fields").hidden = !$("deceased").checked; };
     $("person-form").onsubmit = submitPerson;
     $("person-delete").onclick = removePerson;
     $("user-form").onsubmit = submitUser;

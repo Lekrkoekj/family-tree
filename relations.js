@@ -1,10 +1,10 @@
-// Admin tools on the person details page: adding/removing relatives and the wedding date.
+// Admin tools on the person details page: adding/removing relatives and the wedding date and place.
 
 import { $, showError, friendlyError } from "./ui.js";
 import { readDate, fillDate } from "./dates.js";
 import {
     getPerson, getRelations, makeRelation,
-    addRelation, addPersonWithRelation, removeRelation, setWeddingDate
+    addRelation, addPersonWithRelation, removeRelation, setWedding
 } from "./store.js";
 import { fullName } from "./names.js";
 import { openPicker as openPersonPicker } from "./picker.js";
@@ -60,13 +60,14 @@ export async function confirmRemove(relationId, otherId, kind, personId, onDone)
     }
 }
 
-// ---------- Wedding date ----------
+// ---------- Wedding date and place ----------
 
 export function openWedding(relationId, onDone) {
     wedding = { relationId, onDone };
     const r = getRelations().find((x) => x.id === relationId);
     $("wedding-title").textContent = fullName(getPerson(r.personA)) + " & " + fullName(getPerson(r.personB));
     fillDate("wedding", r.weddingDate);
+    $("wedding-place").value = r.weddingPlace ?? "";
     $("wedding-error").hidden = true;
     $("wedding-submit").disabled = false;
     $("wedding-dialog").showModal();
@@ -79,7 +80,7 @@ async function submitWedding(event) {
 
     $("wedding-submit").disabled = true;
     try {
-        await setWeddingDate(wedding.relationId, date.value);
+        await setWedding(wedding.relationId, date.value, $("wedding-place").value.trim() || null);
         $("wedding-dialog").close();
         wedding.onDone();
     } catch (error) {

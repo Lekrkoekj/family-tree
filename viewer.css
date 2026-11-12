@@ -13,6 +13,20 @@ body {
     background: #fff; /* explicit, so it never depends on the browser's own background */
 }
 
+/* Fixed rows: when the top bar is hidden (details page on desktop) the others stay in their own row,
+   instead of moving up and leaving the bottom bar halfway up the screen */
+#top-bar {
+    grid-row: 1;
+}
+
+#view {
+    grid-row: 2;
+}
+
+#bottom-bar {
+    grid-row: 3;
+}
+
 /* ---------- Bars (the top bar, and the bars at the top of the details page columns) ---------- */
 /* Left and right get the same width (1fr each), so the title in the middle is always centred,
    however many buttons there are on either side. A long title gets "…". */
@@ -879,6 +893,17 @@ dialog input[type="search"] {
 .form fieldset {
     display: flex;
     gap: 8px;
+}
+
+/* Editing on the details page: Save is in the bar above the form */
+#person-form.inline #person-submit {
+    display: none;
+}
+
+/* A few fields that belong together and are shown or hidden as one */
+.form-group {
+    display: grid;
+    gap: 12px;
 }
 
 .form fieldset input {

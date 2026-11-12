@@ -5,6 +5,7 @@ let currentParent = null; // where the back button goes when there is no history
 
 let depth = 0; // how many steps deep the user is inside the app (0 = the page we started on)
 let replacing = false; // true while replacing the current history entry instead of adding one
+let leaveGuard = null; // see setLeaveGuard
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,8 +23,24 @@ export function startRouter(options) {
     route();
 }
 
+/**
+ * A screen can ask to be asked before it's left, e.g. a form with unsaved changes:
+ * setLeaveGuard(() => confirm("Discard your changes?")). goTo and goBack then only go when it returns true.
+ * Every new screen starts without one. (Plain links and the browser's own back button don't ask.)
+ */
+export function setLeaveGuard(fn) {
+    leaveGuard = fn;
+}
+
+function mayLeave() {
+    if (leaveGuard && !leaveGuard()) return false;
+    leaveGuard = null;
+    return true;
+}
+
 /** Go to a screen, e.g. goTo("#/people"). With replace: true the current history entry is overwritten. */
 export function goTo(hash, { replace = false } = {}) {
+    if (!mayLeave()) return;
     if (location.hash === hash) {
         route(); // same hash = no hashchange event, so show it ourselves
         return;
@@ -39,6 +56,7 @@ export function goTo(hash, { replace = false } = {}) {
  * (depth 0), history.back() would leave the app, so we go to the screen's fixed parent instead.
  */
 export function goBack({ steps = 1, fallback = currentParent } = {}) {
+    if (!mayLeave()) return;
     const possible = Math.min(steps, depth); // never step back out of the app
     if (possible > 0) history.go(-possible);
     else goTo(fallback ?? "#/tree", { replace: true });
@@ -99,6 +117,7 @@ function parseHash() {
 }
 
 function route() {
+    leaveGuard = null; // the address already changed; the new screen may set its own guard in render
     const { key, params } = parseHash();
     const def = routes[key];
 

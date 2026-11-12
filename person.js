@@ -1,4 +1,5 @@
-import { goTo, goBack } from "./router.js";
+import { goTo, goBack, setLeaveGuard } from "./router.js";
+import { renderPersonForm, personFormSnapshot } from "./admin.js";
 import { $, friendlyError } from "./ui.js";
 import { formatDate, lifespan, age } from "./dates.js";
 import { getPerson, getRelations, getHomePersonId, setHomePerson, getFile, getFiles } from "./store.js";
@@ -9,6 +10,7 @@ import { blobUrl } from "./storage.js";
 import { iconButton } from "./icons.js";
 
 let isAdmin = false;
+let editing = false; // true on #/person/<id>/edit: the left column shows the form instead of the details
 
 // Same width as the two-column layout in viewer.css
 const isDesktop = () => matchMedia("(min-width: 800px)").matches;
@@ -18,8 +20,9 @@ export function initPerson(options) {
     if (isAdmin) initRelations();
 
     // Desktop: the name appears in the left bar once the big name has scrolled out of view
+    // (while editing the bar says "Edit person" instead)
     new IntersectionObserver(([entry]) => {
-        $("person-bar-name").hidden = entry.isIntersecting;
+        if (!editing) $("person-bar-name").hidden = entry.isIntersecting;
     }, { root: $("person-left-scroll") }).observe($("person-name"));
 
     // Opening a file: on a phone that's a step back can undo (the file covers the whole screen);
@@ -38,14 +41,56 @@ function personHash(id) {
     return "#/person/" + encodeURIComponent(id);
 }
 
+// The left column's bar (desktop) and the app's top bar (phone), in view or edit mode.
+// Editing swaps the details below the photo for the person form; the photo stays.
+function renderBars(p, edit) {
+    editing = edit;
+    $("person-view-part").hidden = edit;
+    $("person-edit-area").hidden = !edit;
+
+    if (edit) {
+        renderPersonForm(p.id, $("person-edit-area"));
+        // Leaving with × / back asks first, but only when something was changed
+        const saved = personFormSnapshot();
+        setLeaveGuard(() => personFormSnapshot() === saved || confirm("Discard your changes?"));
+
+        const save = () => $("person-form").requestSubmit(); // the form's own checks and saving
+        const saveButton = () => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "button";
+            b.textContent = "Save";
+            b.onclick = save;
+            return b;
+        };
+        $("person-bar-left").replaceChildren(iconButton("close", "Cancel", () => goBack()));
+        $("person-bar-name").textContent = "Edit person";
+        $("person-bar-name").hidden = false;
+        $("person-bar-right").replaceChildren(saveButton());
+        $("title").textContent = "Edit person";
+        $("top-actions").replaceChildren(saveButton());
+        return;
+    }
+
+    // Back leaves the page (opening files never adds a step on desktop)
+    const editPerson = () => goTo(personHash(p.id) + "/edit");
+    $("person-bar-left").replaceChildren(iconButton("back", "Back", () => goBack({ fallback: "#/tree/" + encodeURIComponent(p.id) })));
+    $("person-bar-name").textContent = fullName(p);
+    $("person-bar-right").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
+    // Phone: the app's top bar shows the name (or the open file, see renderFiles)
+    $("title").textContent = fullName(p);
+    $("top-actions").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
+}
+
 // Closes the open file: on a phone a step back (opening it was a step), on desktop a swap
 function closeFile(id) {
     if (isDesktop()) goTo(personHash(id), { replace: true });
     else goBack({ fallback: personHash(id) });
 }
 
-// #/person/<id>, or #/person/<id>/file/<fileId> with that file open in the right column
-export function renderPerson(id, fileId = null) {
+// #/person/<id>, #/person/<id>/file/<fileId> with that file open in the right column,
+// or #/person/<id>/edit with the edit form in the left column
+export function renderPerson(id, fileId = null, edit = false) {
     const p = getPerson(id);
     if (!p) {
         goTo(isAdmin ? "#/people" : "#/tree", { replace: true });
@@ -63,13 +108,7 @@ export function renderPerson(id, fileId = null) {
     $("person-bar-name").textContent = fullName(p);
     $("person-facts").replaceChildren(...facts(p));
 
-    // Desktop: the left column's own bar. Back leaves the page (files never add a step there).
-    const editPerson = () => { location.hash = "#/person/edit/" + encodeURIComponent(id); };
-    $("person-bar-left").replaceChildren(iconButton("back", "Back", () => goBack({ fallback: "#/tree/" + encodeURIComponent(id) })));
-    $("person-bar-right").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
-    // Phone: the app's top bar shows the name (or the open file, see renderFiles)
-    $("title").textContent = fullName(p);
-    $("top-actions").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
+    renderBars(p, edit && isAdmin);
     $("person-description").textContent = p.description ?? "";
     $("person-description").hidden = !p.description;
 
@@ -163,26 +202,42 @@ function renderFiles(p, fileId, rerender) {
     $("person-add-file").href = "#/file/new/" + encodeURIComponent(p.id);
 }
 
-// The rows of the Born / Died list
+// "29 May 1943 in Bad Axe, Michigan", "1943", "Bad Axe, Michigan", or "Unknown"
+function whenAndWhereText(date, place) {
+    if (date && place) return formatDate(date) + " in " + place;
+    return date ? formatDate(date) : place || "Unknown";
+}
+
+// The same, as pieces to append(), with a grey "in" so date and place read as two parts
+function whenAndWhere(date, place) {
+    if (!date || !place) return [whenAndWhereText(date, place)];
+    const word = document.createElement("span");
+    word.className = "unknown"; // the grey from the "(unknown)" style
+    word.textContent = "in";
+    return [formatDate(date) + " ", word, " " + place];
+}
+
+// The rows of the Born / Died / Buried list
 function facts(p) {
     const rows = [];
     const ageText = age(p);
 
-    let born = p.birthDate ? formatDate(p.birthDate) : "Unknown";
-    if (ageText && !p.deceased) born += " (" + ageText + (ageText === "1" ? " year old)" : " years old)");
+    const born = whenAndWhere(p.birthDate, p.birthPlace);
+    if (ageText && !p.deceased) born.push(" (" + ageText + (ageText === "1" ? " year old)" : " years old)"));
     rows.push(["Born", born]);
 
     if (p.deceased) {
-        let died = p.deathDate ? formatDate(p.deathDate) : "Unknown";
-        if (ageText) died += " (aged " + ageText + ")";
+        const died = whenAndWhere(p.deathDate, p.deathPlace);
+        if (ageText) died.push(" (aged " + ageText + ")");
         rows.push(["Died", died]);
+        if (p.burialDate || p.burialPlace) rows.push(["Buried", whenAndWhere(p.burialDate, p.burialPlace)]);
     }
 
-    return rows.flatMap(([label, value]) => {
+    return rows.flatMap(([label, pieces]) => {
         const dt = document.createElement("dt");
         dt.textContent = label;
         const dd = document.createElement("dd");
-        dd.textContent = value;
+        dd.append(...pieces); // plain strings become text, never HTML
         return [dt, dd];
     });
 }
@@ -198,7 +253,7 @@ function findRelatives(id) {
         else continue;
 
         const other = getPerson(otherId);
-        if (other) result[group].push({ ...other, relationId: r.id, weddingDate: r.weddingDate });
+        if (other) result[group].push({ ...other, relationId: r.id, weddingDate: r.weddingDate, weddingPlace: r.weddingPlace });
     }
 
     const byBirth = (a, b) => (a.birthDate ?? "9999").localeCompare(b.birthDate ?? "9999");
@@ -222,8 +277,8 @@ function fillRelatives(listId, people, emptyText, kind, personId, rerender) {
         name.textContent = fullName(p);
         const meta = document.createElement("div");
         meta.className = "muted";
-        meta.textContent = [lifespan(p), p.weddingDate ? "married " + formatDate(p.weddingDate) : ""]
-            .filter(Boolean).join(" · ");
+        const married = p.weddingDate || p.weddingPlace ? "married " + whenAndWhereText(p.weddingDate, p.weddingPlace) : "";
+        meta.textContent = [lifespan(p), married].filter(Boolean).join(" • ");
 
         const info = document.createElement("div");
         info.className = "info";
@@ -246,7 +301,7 @@ function relativeActions(p, kind, personId, rerender) {
 
     if (kind === "partner") {
         const weddingButton = document.createElement("button");
-        weddingButton.textContent = p.weddingDate ? "Edit wedding" : "Add wedding";
+        weddingButton.textContent = p.weddingDate || p.weddingPlace ? "Edit wedding" : "Add wedding";
         weddingButton.onclick = () => openWedding(p.relationId, rerender);
         actions.append(weddingButton);
     }
