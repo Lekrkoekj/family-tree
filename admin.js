@@ -1,12 +1,11 @@
 import { db, myEmail } from "./firebase.js";
-import {
-    collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
-    query, where, writeBatch, serverTimestamp
-}
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { goBack, goTo } from "./router.js";
 import { $, showError, friendlyError, displayName } from "./ui.js";
 import { daysInMonth, lifespan } from "./dates.js";
+import { getPerson, getPersons, savePerson, deletePerson } from "./store.js";
+import { fullName, listName, compareByName } from "./names.js";
 
 // ---------- Date input ----------
 
@@ -49,46 +48,33 @@ function readDate(prefix, label) {
 
 // ---------- People ----------
 
-export async function renderPeople() {
+export function renderPeople() {
+    const people = getPersons().sort(compareByName);
+
+    const items = people.map((p) => {
+        const name = document.createElement("div");
+        name.textContent = listName(p); // textContent: never put user data in innerHTML
+        const meta = document.createElement("div");
+        meta.className = "muted";
+        meta.textContent = lifespan(p);
+
+        const info = document.createElement("div");
+        info.className = "info";
+        info.append(name, meta);
+
+        const link = document.createElement("a");
+        link.href = "#/person/" + encodeURIComponent(p.id);
+        link.append(info);
+
+        const li = document.createElement("li");
+        li.append(link);
+        return li;
+    });
+
+    $("people-list").replaceChildren(...items);
     const status = $("people-status");
-    status.textContent = "Loading…";
-    status.hidden = false;
-
-    try {
-        const snap = await getDocs(collection(db, "persons"));
-        const people = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        people.sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
-
-        const items = people.map((p) => {
-            const info = document.createElement("div");
-            info.className = "info";
-
-            const name = document.createElement("div");
-            name.textContent = p.lastName + ", " + p.firstName; // textContent: never put user data in innerHTML
-
-            const meta = document.createElement("div");
-            meta.className = "muted";
-            meta.textContent = lifespan(p);
-
-            info.append(name, meta);
-
-            const link = document.createElement("a");
-            link.href = "#/person/" + encodeURIComponent(p.id);
-            link.append(info);
-
-            const li = document.createElement("li");
-            li.append(link);
-            return li;
-        });
-
-        // replaceChildren (instead of appending) means two overlapping renders can't create duplicates
-        $("people-list").replaceChildren(...items);
-        status.textContent = "No people yet. Use the + button to add the first one.";
-        status.hidden = people.length > 0;
-    } catch (error) {
-        console.error("Could not load people:", error);
-        showError(status, friendlyError(error));
-    }
+    status.textContent = "No people yet. Use the + button to add the first one.";
+    status.hidden = people.length > 0;
 }
 
 let editingPersonId = null; // null = adding a new person
@@ -102,62 +88,43 @@ function fillDate(prefix, value) {
 }
 
 // Used by both #/person/new (id = null) and #/person/edit/<id>
-export async function renderPersonForm(id) {
-    editingPersonId = id;
-
+export function renderPersonForm(id) {
     $("person-form").reset();
     $("death-date").hidden = true;
     $("person-error").hidden = true;
+
+    const p = id ? getPerson(id) : null;
+    if (id && !p) {
+        goTo("#/people", { replace: true });
+        return;
+    }
+    editingPersonId = id;
 
     const submit = $("person-submit");
     const remove = $("person-delete");
     submit.textContent = id ? "Save" : "Add person";
     remove.hidden = !id;
-    submit.disabled = remove.disabled = !!id; // when editing, wait until the person has loaded
-    if (!id) return;
+    submit.disabled = remove.disabled = false;
+    if (!p) return;
 
-    try {
-        const snap = await getDoc(doc(db, "persons", id));
-        if (editingPersonId !== id) return;
-        if (!snap.exists()) {
-            goTo("#/people", { replace: true });
-            return;
-        }
-
-        const p = snap.data();
-        $("first-name").value = p.firstName;
-        $("last-name").value = p.lastName;
-        $("gender").value = p.gender;
-        fillDate("birth", p.birthDate);
-        $("deceased").checked = p.deceased === true;
-        $("death-date").hidden = !p.deceased;
-        fillDate("death", p.deathDate);
-        submit.disabled = remove.disabled = false;
-    } catch (error) {
-        console.error("Could not load person:", error);
-        showError($("person-error"), friendlyError(error));
-    }
+    $("given-names").value = p.givenNames;
+    $("surname").value = p.surname;
+    $("nickname").value = p.nickname ?? "";
+    $("gender").value = p.gender;
+    fillDate("birth", p.birthDate);
+    $("deceased").checked = p.deceased === true;
+    $("death-date").hidden = !p.deceased;
+    fillDate("death", p.deathDate);
 }
 
-async function deletePerson() {
+async function removePerson() {
     const id = editingPersonId;
-    const name = $("first-name").value.trim() + " " + $("last-name").value.trim();
-    if (!confirm("Delete " + name + "? Their relationships are removed too. This can't be undone.")) return;
+    if (!confirm("Delete " + fullName(getPerson(id)) + "? Their relationships are removed too. This can't be undone.")) return;
 
     const remove = $("person-delete");
     remove.disabled = true;
     try {
-        const relations = collection(db, "relations");
-        const [asA, asB] = await Promise.all([
-            getDocs(query(relations, where("personA", "==", id))),
-            getDocs(query(relations, where("personB", "==", id))),
-        ]);
-
-        // All or nothing: the person and every relation they are part of
-        const batch = writeBatch(db);
-        batch.delete(doc(db, "persons", id));
-        [...asA.docs, ...asB.docs].forEach((d) => batch.delete(d.ref));
-        await batch.commit();
+        await deletePerson(id);
         goTo("#/people", { replace: true });
     } catch (error) {
         console.error("Could not delete person:", error);
@@ -171,16 +138,18 @@ async function submitPerson(event) {
     const errorEl = $("person-error");
     errorEl.hidden = true;
 
-    const firstName = $("first-name").value.trim();
-    const lastName = $("last-name").value.trim();
+    const givenNames = $("given-names").value.trim();
+    const surname = $("surname").value.trim();
+    const nickname = $("nickname").value.trim();
     const gender = $("gender").value;
 
-    if (firstName === "" || lastName === "") return showError(errorEl, "Please fill in a first and last name.");
+    if (givenNames === "" || surname === "") return showError(errorEl, "Please fill in the given names and surname.");
     if (!["male", "female", "other"].includes(gender)) return showError(errorEl, "Please choose a gender.");
 
     // Firestore throws on undefined and the rules reject empty strings,
     // so optional fields are only added when they are filled in.
-    const person = { firstName, lastName, gender };
+    const person = { givenNames, surname, gender };
+    if (nickname) person.nickname = nickname;
 
     const birth = readDate("birth", "Birth date");
     if (birth.error) return showError(errorEl, birth.error);
@@ -203,12 +172,12 @@ async function submitPerson(event) {
     submit.disabled = true; // no double submits
     try {
         if (editingPersonId) {
-            await setDoc(doc(db, "persons", editingPersonId), person);
+            await savePerson(editingPersonId, person);
             goBack();
         } else {
             // Replace, so going back from the new person skips the filled-in form
-            const ref = await addDoc(collection(db, "persons"), person);
-            goTo("#/person/" + ref.id, { replace: true });
+            const id = await savePerson(null, person);
+            goTo("#/person/" + id, { replace: true });
         }
     } catch (error) {
         console.error("Could not save person:", error);
@@ -432,7 +401,7 @@ async function submitUser(event) {
 export function initAdmin() {
     $("deceased").onchange = () => { $("death-date").hidden = !$("deceased").checked; };
     $("person-form").onsubmit = submitPerson;
-    $("person-delete").onclick = deletePerson;
+    $("person-delete").onclick = removePerson;
     $("user-form").onsubmit = submitUser;
     $("edit-user-form").onsubmit = submitUserDetail;
     $("edit-user-remove").onclick = removeUser;

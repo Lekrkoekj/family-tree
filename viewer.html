@@ -60,8 +60,7 @@
 
         <!-- PERSON DETAILS SCREEN -->
         <section class="screen" id="screen-person" hidden>
-            <p id="person-status" class="muted" hidden></p>
-            <div id="person-details" hidden>
+            <div id="person-details">
                 <div class="person-heading">
                     <h2 id="person-name"></h2>
                     <a id="person-edit-link" class="button" hidden>Edit</a>
@@ -80,8 +79,9 @@
         <!-- ADD / EDIT PERSON SCREEN -->
         <section class="screen" id="screen-person-form" hidden>
             <form id="person-form" class="form">
-                <input id="first-name" placeholder="First name" maxlength="50" required>
-                <input id="last-name" placeholder="Last name" maxlength="50" required>
+                <input id="given-names" placeholder="Given names" maxlength="100" required>
+                <input id="surname" placeholder="Surname (at birth)" maxlength="50" required>
+                <input id="nickname" placeholder="Nickname (optional)" maxlength="50">
 
                 <select id="gender" required>
                     <option value="">Gender</option>
@@ -194,6 +194,7 @@
         import { initAdmin, renderPeople, renderUsers, renderUserDetail, renderPersonForm, resetUserForm } from "./admin.js";
         import { initAccount, renderAccount, renderAccountEdit } from "./account.js";
         import { initPerson, renderPerson } from "./person.js";
+        import { loadStore, clearCache } from "./store.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
         document.getElementById("back-button").onclick = goBack;
@@ -222,7 +223,9 @@
 
         // Check if the user has access to the app, if not kick them to sign in.
         onAuthStateChanged(auth, async (user) => {
+            // Signed out (here or in another tab) or no access: don't leave family data in this browser
             if (user == null) {
+                clearCache();
                 location.replace("index.html");
                 return;
             }
@@ -232,11 +235,21 @@
                 const role = data?.role;
 
                 if (role !== "viewer" && role !== "admin") {
+                    clearCache();
                     location.replace("index.html");
                     return;
                 }
 
                 console.log("logged in as:", user.email, "role:", role);
+
+                try {
+                    await loadStore();
+                } catch (error) {
+                    console.error("Could not load the family tree data:", error);
+                    document.getElementById("view").textContent = "Could not load the family tree. Please try again later.";
+                    document.body.hidden = false;
+                    return;
+                }
 
                 initAccount();
                 const isAdmin = role === "admin";

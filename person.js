@@ -1,52 +1,31 @@
-import { db } from "./firebase.js";
-import { collection, doc, getDoc, getDocs, query, where }
-    from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { goTo } from "./router.js";
-import { $, showError, friendlyError } from "./ui.js";
+import { $ } from "./ui.js";
 import { formatDate, lifespan, age } from "./dates.js";
+import { getPerson, getRelations } from "./store.js";
+import { fullName } from "./names.js";
 
 let isAdmin = false;
-let showingId = null;
 
 export function initPerson(options) {
     isAdmin = options.isAdmin;
 }
 
-export async function renderPerson(id) {
-    showingId = id;
-    const status = $("person-status");
-    status.textContent = "Loading…";
-    status.hidden = false;
-    $("person-details").hidden = true;
-
-    try {
-        const [snap, relatives] = await Promise.all([
-            getDoc(doc(db, "persons", id)),
-            loadRelatives(id),
-        ]);
-        if (showingId !== id) return; // already opened someone else while this was loading
-
-        if (!snap.exists()) {
-            goTo(isAdmin ? "#/people" : "#/tree", { replace: true });
-            return;
-        }
-
-        const p = snap.data();
-        $("person-name").textContent = p.firstName + " " + p.lastName;
-        $("person-edit-link").hidden = !isAdmin;
-        $("person-edit-link").href = "#/person/edit/" + encodeURIComponent(id);
-        $("person-facts").replaceChildren(...facts(p));
-
-        fillRelatives("person-parents", relatives.parents, "Unknown");
-        fillRelatives("person-partners", relatives.partners, "None");
-        fillRelatives("person-children", relatives.children, "None");
-
-        status.hidden = true;
-        $("person-details").hidden = false;
-    } catch (error) {
-        console.error("Could not load person:", error);
-        showError(status, friendlyError(error));
+export function renderPerson(id) {
+    const p = getPerson(id);
+    if (!p) {
+        goTo(isAdmin ? "#/people" : "#/tree", { replace: true });
+        return;
     }
+
+    $("person-name").textContent = fullName(p);
+    $("person-edit-link").hidden = !isAdmin;
+    $("person-edit-link").href = "#/person/edit/" + encodeURIComponent(id);
+    $("person-facts").replaceChildren(...facts(p));
+
+    const relatives = findRelatives(id);
+    fillRelatives("person-parents", relatives.parents, "Unknown");
+    fillRelatives("person-partners", relatives.partners, "None");
+    fillRelatives("person-children", relatives.children, "None");
 }
 
 // The rows of the Born / Died list
@@ -73,32 +52,19 @@ function facts(p) {
     });
 }
 
-// Finds every relation this person is in and loads the person on the other side
-async function loadRelatives(id) {
-    const relations = collection(db, "relations");
-    const [asA, asB] = await Promise.all([
-        getDocs(query(relations, where("personA", "==", id))),
-        getDocs(query(relations, where("personB", "==", id))),
-    ]);
-
-    // In parent-child, personA is the parent. Partners can be either side.
-    const links = [];
-    asA.forEach((d) => {
-        const r = d.data();
-        links.push({ group: r.type === "partner" ? "partners" : "children", otherId: r.personB, weddingDate: r.weddingDate });
-    });
-    asB.forEach((d) => {
-        const r = d.data();
-        links.push({ group: r.type === "partner" ? "partners" : "parents", otherId: r.personA, weddingDate: r.weddingDate });
-    });
-
-    const others = await Promise.all(links.map((l) => getDoc(doc(db, "persons", l.otherId))));
-
+// In parent-child, personA is the parent. Partners can be either side.
+function findRelatives(id) {
     const result = { parents: [], partners: [], children: [] };
-    links.forEach((l, i) => {
-        if (!others[i].exists()) return;
-        result[l.group].push({ id: l.otherId, weddingDate: l.weddingDate, ...others[i].data() });
-    });
+
+    for (const r of getRelations()) {
+        let group, otherId;
+        if (r.personA === id) [group, otherId] = [r.type === "partner" ? "partners" : "children", r.personB];
+        else if (r.personB === id) [group, otherId] = [r.type === "partner" ? "partners" : "parents", r.personA];
+        else continue;
+
+        const other = getPerson(otherId);
+        if (other) result[group].push({ ...other, weddingDate: r.weddingDate });
+    }
 
     const byBirth = (a, b) => (a.birthDate ?? "9999").localeCompare(b.birthDate ?? "9999");
     result.parents.sort(byBirth);
@@ -118,7 +84,7 @@ function fillRelatives(listId, people, emptyText) {
 
     $(listId).replaceChildren(...people.map((p) => {
         const name = document.createElement("div");
-        name.textContent = p.firstName + " " + p.lastName;
+        name.textContent = fullName(p);
         const meta = document.createElement("div");
         meta.className = "muted";
         meta.textContent = [lifespan(p), p.weddingDate ? "married " + formatDate(p.weddingDate) : ""]
