@@ -3,7 +3,8 @@ import { $ } from "./ui.js";
 import { lifespan } from "./dates.js";
 import { getPerson, getPersons, getRelations, getHomePersonId, getLastSelected, setLastSelected } from "./store.js";
 import { fullName, compareByName } from "./names.js";
-import { layoutTree, BOX_W, BOX_H } from "./treeLayout.js";
+import { layoutTree, BOX_W, BOX_H, SELECTED_W } from "./treeLayout.js";
+import { relationshipLabeler } from "./relationships.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD = 6; // pixels; moving less than this still counts as a click
@@ -43,8 +44,9 @@ export function renderTree(id) {
 
     const persons = new Map(getPersons().map((p) => [p.id, p]));
     const { nodes, lines } = layoutTree(id, persons, getRelations());
+    const labelOf = relationshipLabeler(id, persons, getRelations());
     const svg = drawLines(lines);
-    const boxes = nodes.map(drawBox);
+    const boxes = nodes.map((n) => drawBox(n, labelOf(n.id)));
     $("tree-layer").replaceChildren(svg, ...boxes);
 
     const previous = shown;
@@ -53,7 +55,7 @@ export function renderTree(id) {
 
     const canvas = $("tree-canvas");
     canvasSize = { w: canvas.clientWidth, h: canvas.clientHeight };
-    const center = { x: canvasSize.w / 2 - BOX_W / 2, y: canvasSize.h / 2 - BOX_H / 2 };
+    const center = { x: canvasSize.w / 2 - SELECTED_W / 2, y: canvasSize.h / 2 - BOX_H / 2 };
     const from = clicked?.id === id ? clicked : null;
     clicked = null;
     setOffset(center.x, center.y);
@@ -97,7 +99,8 @@ function selectFromTree(node) {
 
     const canvas = $("tree-canvas");
     sliding = true;
-    setOffset(canvas.clientWidth / 2 - BOX_W / 2 - node.x, canvas.clientHeight / 2 - BOX_H / 2 - node.y, true);
+    // Slide to where the (wider) selected box will be, so phase 2 starts without a jump
+    setOffset(canvas.clientWidth / 2 - SELECTED_W / 2 - node.x, canvas.clientHeight / 2 - BOX_H / 2 - node.y, true);
     setTimeout(() => {
         sliding = false;
         clicked = { id: node.id, x: node.x, y: node.y };
@@ -118,7 +121,7 @@ function drawLines(lines) {
     return svg;
 }
 
-function drawBox(node) {
+function drawBox(node, label) {
     const p = getPerson(node.id);
     // The selected box is one big link to the details page; the others are buttons that select someone
     const box = document.createElement(node.selected ? "a" : "button");
@@ -132,28 +135,41 @@ function drawBox(node) {
     box.className = "tree-box" + (node.selected ? " selected" : "") + (node.duplicate ? " duplicate" : "");
     box.style.left = node.x + "px";
     box.style.top = node.y + "px";
-    box.style.width = BOX_W + "px";
+    box.style.width = node.width + "px";
     box.style.height = BOX_H + "px";
     if (node.duplicate) box.title = "This person appears more than once in this tree";
 
     const name = document.createElement("div");
     name.className = "tree-name";
     name.textContent = fullName(p);
-    const years = document.createElement("div");
-    years.className = "muted";
-    years.textContent = lifespan(p);
+    const meta = document.createElement("div");
+    meta.className = "tree-meta";
+    meta.textContent = [label, lifespan(p)].filter(Boolean).join(" • "); // "Grandfather • 1890 – 1960"
     const info = document.createElement("div");
     info.className = "tree-info";
-    info.append(name, years);
+    info.style.width = BOX_W - 4 + "px"; // the same size in every box (minus room for the border), also in the wider selected one
+    info.append(name, meta);
     box.append(info);
 
     if (node.selected) {
         const details = document.createElement("span");
         details.className = "tree-details";
-        details.textContent = "View details ›";
+        details.append("View details", chevron());
         box.append(details);
     }
     return box;
+}
+
+// A ">" icon as a small SVG, so it stays sharp at any size
+function chevron() {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "chevron");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M9 6l6 6-6 6");
+    svg.append(path);
+    return svg;
 }
 
 function setOffset(x, y, animate = false) {

@@ -5,7 +5,9 @@
 // Generation 1 up is at y = -ROW, 1 down at y = +ROW, and so on.
 
 export const BOX_W = 220;
-export const BOX_H = 76; // room for a 2-line name, the years, and later a relationship label
+export const BOX_H = 84;        // room for a 2-line name and a 2-line "label • years"
+export const DETAILS_W = 110;   // the extra "View details" part on the right of the selected box
+export const SELECTED_W = BOX_W + DETAILS_W;
 const H_GAP = 24;  // between boxes in a row
 const V_GAP = 64;  // between rows
 const ROW = BOX_H + V_GAP;
@@ -28,13 +30,14 @@ export function layoutTree(rootId, persons, relations) {
     out.nodes.forEach((n) => {
         n.selected = n.id === rootId && n.x === 0 && n.y === 0;
         n.duplicate = count.get(n.id) > 1;
+        n.width ??= BOX_W;
     });
     return out;
 }
 
 // ---------- Who is related to whom ----------
 
-function buildGraph(persons, relations) {
+export function buildGraph(persons, relations) {
     const parents = new Map();
     const children = new Map();
     const partners = new Map();
@@ -150,7 +153,8 @@ function layoutSiblings(g, rootId, out) {
 // Children are grouped per partner. Each group hangs centred under its own drop line, and when
 // groups need more room, the partners above are pushed apart so no lines cross.
 function layoutUnit(g, id, levelsBelow, isRoot = false) {
-    const unit = { nodes: [{ id, x: 0, y: 0 }], lines: [], minX: 0, maxX: BOX_W };
+    const ownWidth = isRoot ? SELECTED_W : BOX_W; // the selected person's box is wider
+    const unit = { nodes: [{ id, x: 0, y: 0, width: ownWidth }], lines: [], minX: 0, maxX: ownWidth };
     const partners = levelsBelow >= 1 ? g.partnersOf(id) : [];
     const kids = levelsBelow >= 1 ? g.childrenOf(id) : [];
 
@@ -162,7 +166,7 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
     }
 
     const barY = BOX_H + V_GAP / 2;
-    let rowRight = BOX_W;     // right edge of the last box in this row
+    let rowRight = ownWidth;  // right edge of the last box in this row
     let nextFree = -Infinity; // where the next group of children may start
 
     groups.forEach((group, k) => {
@@ -176,12 +180,12 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
         let dropFromY = BOX_H; // group 0 drops from the bottom of the person
         if (k > 0) {
             const px = dropX + H_GAP / 2;
-            unit.nodes.push({ id: group.partner, x: px, y: 0 });
+            unit.nodes.push({ id: group.partner, x: px, y: 0, width: BOX_W });
             rowRight = px + BOX_W;
 
             if (k === 1) {
                 // First partner: a straight line between the two
-                unit.lines.push([[BOX_W, BOX_H / 2], [px, BOX_H / 2]]);
+                unit.lines.push([[ownWidth, BOX_H / 2], [px, BOX_H / 2]]);
                 dropFromY = BOX_H / 2;
             } else {
                 // Later partners: a line over the earlier partners, each one higher and starting further left.

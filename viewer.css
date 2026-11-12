@@ -260,13 +260,13 @@ a.button {
     stroke-width: 1.5;
 }
 
-/* Name and years on the left; the selected box also has "View details ›" on the right */
+/* Name and "label • years" on the left; the selected box also has "View details >" on the right */
 .tree-box {
     position: absolute;
     box-sizing: border-box;
     display: flex;
-    align-items: center;
-    padding: 6px 12px;
+    align-items: stretch;
+    padding: 0;
     border: 1px solid #ccc;
     border-radius: 10px;
     background: #fff;
@@ -286,12 +286,26 @@ a.button {
     background: #f4f4f4;
 }
 
+/* Its width is set in tree.js, so it's the same in every box */
 .tree-info {
-    flex: 1;
-    min-width: 0; /* lets long names shrink and get "…" instead of pushing the box wider */
+    flex: none;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 12px;
+}
+
+/* "Grandfather • 1890 – 1960", at most two lines */
+.tree-meta {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: #666;
+    font-size: 0.8rem;
+    line-height: 1.25;
 }
 
 .tree-box.duplicate {
@@ -307,16 +321,26 @@ a.button {
     line-height: 1.2;
 }
 
-/* "View details ›" on the right of the selected box, behind a dividing line */
+/* "View details" and a ">" icon in the extra part of the selected box, behind a dividing line */
 .tree-details {
-    align-self: stretch;
+    flex: 1;
     display: flex;
     align-items: center;
-    margin-left: 10px;
-    padding-left: 10px;
+    justify-content: center;
+    gap: 4px;
     border-left: 1px solid #ccc;
-    max-width: 4.5em; /* wraps to "View / details ›", leaving more room for the name */
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.tree-details .chevron {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 /* ---------- Dialogs ---------- */
