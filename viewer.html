@@ -18,7 +18,10 @@
     <main id="view">
         <!-- FAMILY TREE SCREEN -->
         <section class="screen" id="screen-tree" hidden>
-            <p>Family tree goes here.</p>
+            <p id="tree-empty" class="muted" hidden>No people yet.</p>
+            <div id="tree-canvas" hidden>
+                <div id="tree-layer"></div>
+            </div>
         </section>
 
         <!-- ACCOUNT SCREEN -->
@@ -66,6 +69,11 @@
                     <a id="person-edit-link" class="button" hidden>Edit</a>
                 </div>
                 <dl id="person-facts" class="facts"></dl>
+                <div class="person-actions">
+                    <a id="person-tree-link" class="button">View in tree</a>
+                    <button id="person-set-home" hidden>Set as home person</button>
+                    <span id="person-is-home" class="muted" hidden>Home person</span>
+                </div>
 
                 <div class="section-header">
                     <h3 class="list-header">Parents</h3>
@@ -247,6 +255,7 @@
         import { initAdmin, renderPeople, renderUsers, renderUserDetail, renderPersonForm, resetUserForm } from "./admin.js";
         import { initAccount, renderAccount, renderAccountEdit } from "./account.js";
         import { initPerson, renderPerson } from "./person.js";
+        import { initTree, renderTree } from "./tree.js";
         import { loadStore, clearCache } from "./store.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
@@ -255,7 +264,7 @@
         // All the screens in the app. Key = the URL after "#/" with "/" replaced by "-".
         
         const routes = {
-            "tree": { title: "Family Tree", tab: "tree" },
+            "tree": { title: "Family Tree", tab: "tree", param: "optional", render: renderTree },
             "account": { title: "Account", tab: "account", render: renderAccount },
             "account-edit": { title: "Edit name", tab: "account", parent: "#/account", render: renderAccountEdit },
 
@@ -264,7 +273,7 @@
             "people": { title: "People", tab: "admin", admin: true, parent: "#/admin", add: "#/person/new", render: renderPeople },
             "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", render: renderPersonForm },
             "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: (id) => "#/person/" + id, screen: "person-form", param: true, render: renderPersonForm },
-            "person": { title: "Person", tab: "tree", parent: "#/tree", param: true, render: renderPerson },
+            "person": { title: "Person", tab: "tree", parent: (id) => "#/tree/" + id, param: true, render: renderPerson },
 
             "files": { title: "Files", tab: "admin", admin: true, parent: "#/admin", add: "#/file/new" },
             "file-new": { title: "Add file", tab: "admin", admin: true, parent: "#/files" },
@@ -309,9 +318,11 @@
                 document.getElementById("admin-tab").hidden = !isAdmin;
                 if (isAdmin) initAdmin();
                 initPerson({ isAdmin });
+                initTree();
 
-                startRouter({ routes, isAdmin });
+                // Show the page first: screens like the tree need to know their size while drawing
                 document.body.hidden = false;
+                startRouter({ routes, isAdmin });
             } catch (error) {
                 console.error("Firestore error:", error);
                 location.replace("index.html");

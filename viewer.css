@@ -184,7 +184,15 @@ a.button {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 6px 16px;
-    margin: 16px 0 24px;
+    margin: 16px 0;
+}
+
+.person-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 24px;
 }
 
 .facts dt {
@@ -203,6 +211,112 @@ a.button {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+/* ---------- Family tree ---------- */
+#screen-tree {
+    position: relative;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0;
+}
+
+#tree-empty {
+    padding: 16px;
+}
+
+#tree-canvas {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #f7f7f5;
+    touch-action: none; /* dragging moves the tree, not the page */
+    user-select: none;  /* no text getting selected while dragging */
+    cursor: grab;
+}
+
+#tree-canvas.dragging,
+#tree-canvas.dragging .tree-box {
+    cursor: grabbing;
+}
+
+/* Everything in the tree lives in this layer; moving it moves the whole tree */
+#tree-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+#tree-lines {
+    position: absolute;
+    left: 0;
+    top: 0;
+    overflow: visible;
+}
+
+#tree-lines path {
+    fill: none;
+    stroke: #999;
+    stroke-width: 1.5;
+}
+
+/* Name and years on the left; the selected box also has "View details ›" on the right */
+.tree-box {
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.tree-box.selected {
+    border: 2px solid #333;
+}
+
+.tree-box.selected:hover {
+    background: #f4f4f4;
+}
+
+.tree-info {
+    flex: 1;
+    min-width: 0; /* lets long names shrink and get "…" instead of pushing the box wider */
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tree-box.duplicate {
+    border-style: dashed;
+}
+
+/* At most two lines for the name, then "…" */
+.tree-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.2;
+}
+
+/* "View details ›" on the right of the selected box, behind a dividing line */
+.tree-details {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid #ccc;
+    max-width: 4.5em; /* wraps to "View / details ›", leaving more room for the name */
+    font-size: 0.8rem;
 }
 
 /* ---------- Dialogs ---------- */

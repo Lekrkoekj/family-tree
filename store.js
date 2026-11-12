@@ -6,11 +6,14 @@ import { collection, doc, getDoc, getDocs, query, where, writeBatch, serverTimes
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
 const CACHE_KEY = "family-tree-cache";
+const LAST_SELECTED_KEY = "family-tree-last-selected";
 const versionRef = doc(db, "meta", "version");
+const settingsRef = doc(db, "meta", "settings");
 
 let version = null;
 let persons = new Map();   // id -> { id, givenNames, surname, ..., updatedAt (ms) }
 let relations = new Map(); // id -> { id, personA, personB, type, weddingDate? }
+let settings = {};         // { homePerson? }
 let loading = null;
 
 // ---------- Reading ----------
@@ -25,6 +28,10 @@ export function getPersons() {
 
 export function getRelations() {
     return [...relations.values()];
+}
+
+export function getHomePersonId() {
+    return settings.homePerson ?? null;
 }
 
 // Call once before showing any screen. Calling it again returns the same promise.
@@ -43,17 +50,20 @@ async function load() {
         version = cached.version;
         persons = new Map(cached.persons.map((p) => [p.id, p]));
         relations = new Map(cached.relations.map((r) => [r.id, r]));
+        settings = cached.settings ?? {};
         return;
     }
 
     console.log("store: downloading everything");
-    const [personSnap, relationSnap] = await Promise.all([
+    const [personSnap, relationSnap, settingsSnap] = await Promise.all([
         getDocs(collection(db, "persons")),
         getDocs(collection(db, "relations")),
+        getDoc(settingsRef),
     ]);
     version = serverVersion;
     persons = new Map(personSnap.docs.map((d) => [d.id, fromDoc(d)]));
     relations = new Map(relationSnap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+    settings = settingsSnap.exists() ? settingsSnap.data() : {};
     writeCache();
 }
 
@@ -79,6 +89,7 @@ function writeCache() {
             version,
             persons: getPersons(),
             relations: getRelations(),
+            settings,
         }));
     } catch (error) {
         console.warn("store: could not write cache", error); // e.g. storage full; the site still works
@@ -89,6 +100,23 @@ function writeCache() {
 export function clearCache() {
     try {
         localStorage.removeItem(CACHE_KEY);
+        localStorage.removeItem(LAST_SELECTED_KEY);
+    } catch { }
+}
+
+// ---------- Last selected person in the tree (per browser) ----------
+
+export function getLastSelected() {
+    try {
+        return localStorage.getItem(LAST_SELECTED_KEY);
+    } catch {
+        return null;
+    }
+}
+
+export function setLastSelected(id) {
+    try {
+        localStorage.setItem(LAST_SELECTED_KEY, id);
     } catch { }
 }
 
@@ -188,5 +216,14 @@ export async function setWeddingDate(id, date) {
     if (date) relation.weddingDate = date;
     else delete relation.weddingDate;
     relations.set(id, relation);
+    writeCache();
+}
+
+// ---------- Settings ----------
+
+export async function setHomePerson(id) {
+    await commit((batch) => batch.set(settingsRef, { homePerson: id }));
+
+    settings = { ...settings, homePerson: id };
     writeCache();
 }

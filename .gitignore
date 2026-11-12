@@ -1,0 +1,3 @@
+# Family data exports (GEDCOM). This repository is public: never commit these.
+*.ged
+*.GED

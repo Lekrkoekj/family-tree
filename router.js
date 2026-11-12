@@ -93,8 +93,9 @@ function route() {
     const parent = typeof def.parent !== "function" ? def.parent
         : param !== null ? def.parent(param) : null;
 
+    // param: true = required, param: "optional" = may be left out.
     // A screen that needs a parameter but didn't get one: go to its parent.
-    if (def.param && param === null) {
+    if (def.param === true && param === null) {
         goTo(parent ?? "#/tree", { replace: true });
         return;
     }

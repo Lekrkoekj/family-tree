@@ -1,7 +1,7 @@
 import { goTo } from "./router.js";
-import { $ } from "./ui.js";
+import { $, friendlyError } from "./ui.js";
 import { formatDate, lifespan, age } from "./dates.js";
-import { getPerson, getRelations } from "./store.js";
+import { getPerson, getRelations, getHomePersonId, setHomePerson } from "./store.js";
 import { fullName } from "./names.js";
 import { initRelations, openPicker, confirmRemove, openWedding } from "./relations.js";
 
@@ -24,8 +24,23 @@ export function renderPerson(id) {
     $("person-edit-link").href = "#/person/edit/" + encodeURIComponent(id);
     $("person-facts").replaceChildren(...facts(p));
 
-    const relatives = findRelatives(id);
     const rerender = () => renderPerson(id);
+    $("person-tree-link").href = "#/tree/" + encodeURIComponent(id);
+
+    const isHome = getHomePersonId() === id;
+    $("person-is-home").hidden = !isHome;
+    $("person-set-home").hidden = !isAdmin || isHome;
+    $("person-set-home").onclick = async () => {
+        try {
+            await setHomePerson(id);
+            rerender();
+        } catch (error) {
+            console.error("Could not set home person:", error);
+            alert(friendlyError(error));
+        }
+    };
+
+    const relatives = findRelatives(id);
     fillRelatives("person-parents", relatives.parents, "Unknown", "parent", id, rerender);
     fillRelatives("person-partners", relatives.partners, "None", "partner", id, rerender);
     fillRelatives("person-children", relatives.children, "None", "child", id, rerender);
