@@ -6,14 +6,9 @@ import {
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { goBack, goTo } from "./router.js";
 import { $, showError, friendlyError, displayName } from "./ui.js";
+import { daysInMonth, lifespan } from "./dates.js";
 
-// ---------- Date helpers ----------
-
-const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
-function isLeapYear(y) {
-    return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-}
+// ---------- Date input ----------
 
 // Reads the three inputs, e.g. "birth" -> birth-year, birth-month, birth-day.
 // Returns { value: "YYYY" | "YYYY-MM" | "YYYY-MM-DD" | null } or { error: "message" }
@@ -42,9 +37,7 @@ function readDate(prefix, label) {
     }
 
     if (day !== "") {
-        let maxDay = DAYS_IN_MONTH[Number(month) - 1];
-        if (Number(month) === 2 && isLeapYear(Number(year))) maxDay = 29;
-
+        const maxDay = daysInMonth(Number(year), Number(month));
         if (!/^\d{1,2}$/.test(day) || Number(day) < 1 || Number(day) > maxDay) {
             return { error: label + ": that month has " + maxDay + " days." };
         }
@@ -55,16 +48,6 @@ function readDate(prefix, label) {
 }
 
 // ---------- People ----------
-
-// Format: "1931 – 2005", "b. 1931", or "" when nothing is known
-function lifespan(p) {
-    const birthYear = p.birthDate ? p.birthDate.slice(0, 4) : "?";
-    if (p.deceased) {
-        const deathYear = p.deathDate ? p.deathDate.slice(0, 4) : "?";
-        return birthYear + " – " + deathYear;
-    }
-    return p.birthDate ? "b. " + birthYear : "";
-}
 
 export async function renderPeople() {
     const status = $("people-status");
@@ -90,7 +73,7 @@ export async function renderPeople() {
             info.append(name, meta);
 
             const link = document.createElement("a");
-            link.href = "#/person/edit/" + encodeURIComponent(p.id);
+            link.href = "#/person/" + encodeURIComponent(p.id);
             link.append(info);
 
             const li = document.createElement("li");
@@ -175,7 +158,7 @@ async function deletePerson() {
         batch.delete(doc(db, "persons", id));
         [...asA.docs, ...asB.docs].forEach((d) => batch.delete(d.ref));
         await batch.commit();
-        goBack();
+        goTo("#/people", { replace: true });
     } catch (error) {
         console.error("Could not delete person:", error);
         showError($("person-error"), friendlyError(error));
@@ -219,9 +202,14 @@ async function submitPerson(event) {
     const submit = $("person-submit");
     submit.disabled = true; // no double submits
     try {
-        if (editingPersonId) await setDoc(doc(db, "persons", editingPersonId), person);
-        else await addDoc(collection(db, "persons"), person);
-        goBack(); // back to the list, which reloads itself
+        if (editingPersonId) {
+            await setDoc(doc(db, "persons", editingPersonId), person);
+            goBack();
+        } else {
+            // Replace, so going back from the new person skips the filled-in form
+            const ref = await addDoc(collection(db, "persons"), person);
+            goTo("#/person/" + ref.id, { replace: true });
+        }
     } catch (error) {
         console.error("Could not save person:", error);
         showError(errorEl, friendlyError(error));

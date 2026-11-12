@@ -58,6 +58,25 @@
             <ul id="people-list" class="list"></ul>
         </section>
 
+        <!-- PERSON DETAILS SCREEN -->
+        <section class="screen" id="screen-person" hidden>
+            <p id="person-status" class="muted" hidden></p>
+            <div id="person-details" hidden>
+                <div class="person-heading">
+                    <h2 id="person-name"></h2>
+                    <a id="person-edit-link" class="button" hidden>Edit</a>
+                </div>
+                <dl id="person-facts" class="facts"></dl>
+
+                <h3 class="list-header">Parents</h3>
+                <ul id="person-parents" class="list"></ul>
+                <h3 class="list-header">Partners</h3>
+                <ul id="person-partners" class="list"></ul>
+                <h3 class="list-header">Children</h3>
+                <ul id="person-children" class="list"></ul>
+            </div>
+        </section>
+
         <!-- ADD / EDIT PERSON SCREEN -->
         <section class="screen" id="screen-person-form" hidden>
             <form id="person-form" class="form">
@@ -174,6 +193,7 @@
         import { startRouter, goBack } from "./router.js";
         import { initAdmin, renderPeople, renderUsers, renderUserDetail, renderPersonForm, resetUserForm } from "./admin.js";
         import { initAccount, renderAccount, renderAccountEdit } from "./account.js";
+        import { initPerson, renderPerson } from "./person.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
         document.getElementById("back-button").onclick = goBack;
@@ -189,7 +209,8 @@
 
             "people": { title: "People", tab: "admin", admin: true, parent: "#/admin", add: "#/person/new", render: renderPeople },
             "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", render: renderPersonForm },
-            "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", param: true, render: renderPersonForm },
+            "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: (id) => "#/person/" + id, screen: "person-form", param: true, render: renderPersonForm },
+            "person": { title: "Person", tab: "tree", parent: "#/tree", param: true, render: renderPerson },
 
             "files": { title: "Files", tab: "admin", admin: true, parent: "#/admin", add: "#/file/new" },
             "file-new": { title: "Add file", tab: "admin", admin: true, parent: "#/files" },
@@ -221,6 +242,7 @@
                 const isAdmin = role === "admin";
                 document.getElementById("admin-tab").hidden = !isAdmin;
                 if (isAdmin) initAdmin();
+                initPerson({ isAdmin });
 
                 startRouter({ routes, isAdmin });
                 document.body.hidden = false;

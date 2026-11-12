@@ -155,6 +155,45 @@ body {
     color: #c00;
 }
 
+/* ---------- Person details ---------- */
+.person-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.person-heading h2 {
+    margin: 0;
+}
+
+a.button {
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 16px;
+    margin: 16px 0 24px;
+}
+
+.facts dt {
+    color: #666;
+}
+
+.facts dd {
+    margin: 0;
+}
+
+#person-details .list {
+    margin-bottom: 20px;
+}
+
 #screen-account .menu {
     margin-bottom: 16px;
 }

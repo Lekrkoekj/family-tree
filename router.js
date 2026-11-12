@@ -1,7 +1,7 @@
 let routes = {};
 let isAdmin = false;
 let started = false;
-let current = null; // the route definition that is showing right now
+let currentParent = null; // where the back button goes when there is no history to go back to
 
 let depth = 0; // how many steps deep the user is inside the app (0 = the page we started on)
 let replacing = false; // true while replacing the current history entry instead of adding one
@@ -40,7 +40,7 @@ export function goTo(hash, { replace = false } = {}) {
  */
 export function goBack() {
     if (depth > 0) history.back();
-    else goTo(current?.parent ?? "#/tree", { replace: true });
+    else goTo(currentParent ?? "#/tree", { replace: true });
 }
 
 function onHashChange() {
@@ -88,17 +88,21 @@ function route() {
         goTo("#/tree", { replace: true });
         return;
     }
+    // parent can be a fixed hash or a function of the parameter, e.g. (id) => "#/person/" + id
+    const parent = typeof def.parent !== "function" ? def.parent
+        : param !== null ? def.parent(param) : null;
+
     // A screen that needs a parameter but didn't get one: go to its parent.
     if (def.param && param === null) {
-        goTo(def.parent ?? "#/tree", { replace: true });
+        goTo(parent ?? "#/tree", { replace: true });
         return;
     }
-    current = def;
+    currentParent = parent;
 
     const screenId = "screen-" + (def.screen ?? key);
     document.querySelectorAll(".screen").forEach((s) => (s.hidden = s.id !== screenId));
     $("title").textContent = def.title;
-    $("back-button").hidden = !def.parent;
+    $("back-button").hidden = !parent;
 
     const addLink = $("add-button");
     addLink.hidden = !def.add;
