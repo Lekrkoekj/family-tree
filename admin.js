@@ -60,7 +60,7 @@ export function renderPersonForm(id) {
     submit.disabled = remove.disabled = false;
     if (!p) return;
 
-    $("given-names").value = p.givenNames;
+    $("given-names").value = p.givenNames ?? "";
     $("surname").value = p.surname ?? "";
     $("nickname").value = p.nickname ?? "";
     $("gender").value = p.gender;
@@ -97,12 +97,13 @@ async function submitPerson(event) {
     const nickname = $("nickname").value.trim();
     const gender = $("gender").value;
 
-    if (givenNames === "") return showError(errorEl, "Please fill in the given names.");
+    if (givenNames === "" && surname === "") return showError(errorEl, "Please fill in a given name or a surname.");
     if (!["male", "female", "other"].includes(gender)) return showError(errorEl, "Please choose a gender.");
 
     // Firestore throws on undefined and the rules reject empty strings,
     // so optional fields are only added when they are filled in.
-    const person = { givenNames, gender };
+    const person = { gender };
+    if (givenNames) person.givenNames = givenNames;
     if (surname) person.surname = surname;
     if (nickname) person.nickname = nickname;
 

@@ -130,10 +130,11 @@ async function submitNewPerson(event) {
     const gender = $("new-gender").value;
 
     const errorEl = $("picker-new-error");
-    if (givenNames === "") return showError(errorEl, "Please fill in the given names.");
+    if (givenNames === "" && surname === "") return showError(errorEl, "Please fill in a given name or a surname.");
     if (!["male", "female", "other"].includes(gender)) return showError(errorEl, "Please choose a gender.");
 
-    const person = { givenNames, gender };
+    const person = { gender };
+    if (givenNames) person.givenNames = givenNames;
     if (surname) person.surname = surname;
     await savePicker(() => addPersonWithRelation(person, picker.personId, picker.kind), errorEl);
 }

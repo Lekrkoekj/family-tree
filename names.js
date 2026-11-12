@@ -1,18 +1,20 @@
-// "Johannes Pieter (Jan) Keim", or "Johannes Pieter (Jan)" when the surname is unknown
+// "Johannes Pieter (Jan) Keim"; unknown parts are simply left out ("Keim", "Johannes Pieter")
 export function fullName(p) {
     return [p.givenNames, p.nickname ? "(" + p.nickname + ")" : "", p.surname].filter(Boolean).join(" ");
 }
 
-// "Keim, Johannes Pieter (Jan)", or a grey "(unknown)" instead of the surname.
+// "Keim, Johannes Pieter (Jan)", with a grey "(unknown)" for a missing surname or given names.
 // Returns pieces to put in an element with .append(); plain strings become text, never HTML.
 export function listName(p) {
     const given = [p.givenNames, p.nickname ? "(" + p.nickname + ")" : ""].filter(Boolean).join(" ");
-    if (p.surname) return [p.surname + ", " + given];
+    return [p.surname || unknown(), ", ", given || unknown()];
+}
 
-    const unknown = document.createElement("span");
-    unknown.className = "unknown";
-    unknown.textContent = "(unknown)";
-    return [unknown, ", " + given];
+function unknown() {
+    const span = document.createElement("span");
+    span.className = "unknown";
+    span.textContent = "(unknown)";
+    return span;
 }
 
 // "van den Berg" -> "Berg", "'t Hart" -> "Hart", "Van Buren" stays "Van Buren"
@@ -29,5 +31,5 @@ export function compareByName(a, b) {
 
     const opts = { sensitivity: "base" }; // ignores case and accents
     const bySurname = a.surname ? sortSurname(a.surname).localeCompare(sortSurname(b.surname), undefined, opts) : 0;
-    return bySurname || a.givenNames.localeCompare(b.givenNames, undefined, opts);
+    return bySurname || (a.givenNames ?? "").localeCompare(b.givenNames ?? "", undefined, opts);
 }
