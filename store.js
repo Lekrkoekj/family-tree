@@ -14,6 +14,8 @@ let version = null;
 let persons = new Map();   // id -> { id, givenNames, surname, ..., updatedAt (ms) }
 let relations = new Map(); // id -> { id, personA, personB, type, weddingDate? }
 let settings = {};         // { homePerson? }
+let files = new Map();     // id -> { id, title, kind, source, people, ..., updatedAt (ms) }
+let categories = new Map(); // id -> { id, name }
 let loading = null;
 
 // ---------- Reading ----------
@@ -34,6 +36,18 @@ export function getHomePersonId() {
     return settings.homePerson ?? null;
 }
 
+export function getFile(id) {
+    return files.get(id) ?? null;
+}
+
+export function getFiles() {
+    return [...files.values()];
+}
+
+export function getCategories() {
+    return [...categories.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Call once before showing any screen. Calling it again returns the same promise.
 export function loadStore() {
     loading ??= load();
@@ -51,19 +65,25 @@ async function load() {
         persons = new Map(cached.persons.map((p) => [p.id, p]));
         relations = new Map(cached.relations.map((r) => [r.id, r]));
         settings = cached.settings ?? {};
+        files = new Map((cached.files ?? []).map((f) => [f.id, f]));
+        categories = new Map((cached.categories ?? []).map((c) => [c.id, c]));
         return;
     }
 
     console.log("store: downloading everything");
-    const [personSnap, relationSnap, settingsSnap] = await Promise.all([
+    const [personSnap, relationSnap, settingsSnap, fileSnap, categorySnap] = await Promise.all([
         getDocs(collection(db, "persons")),
         getDocs(collection(db, "relations")),
         getDoc(settingsRef),
+        getDocs(collection(db, "files")),
+        getDocs(collection(db, "categories")),
     ]);
     version = serverVersion;
     persons = new Map(personSnap.docs.map((d) => [d.id, fromDoc(d)]));
     relations = new Map(relationSnap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
     settings = settingsSnap.exists() ? settingsSnap.data() : {};
+    files = new Map(fileSnap.docs.map((d) => [d.id, fromDoc(d)]));
+    categories = new Map(categorySnap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
     writeCache();
 }
 
@@ -90,6 +110,8 @@ function writeCache() {
             persons: getPersons(),
             relations: getRelations(),
             settings,
+            files: getFiles(),
+            categories: getCategories(),
         }));
     } catch (error) {
         console.warn("store: could not write cache", error); // e.g. storage full; the site still works
@@ -225,5 +247,81 @@ export async function setHomePerson(id) {
     await commit((batch) => batch.set(settingsRef, { homePerson: id }));
 
     settings = { ...settings, homePerson: id };
+    writeCache();
+}
+
+// ---------- Files ----------
+
+// The id is made up front, because the Storage paths (files/<id>/...) are needed before the document is saved
+export function newFileId() {
+    return doc(collection(db, "files")).id;
+}
+
+export async function saveFile(id, data) {
+    await commit((batch) => batch.set(doc(db, "files", id), { ...data, updatedAt: serverTimestamp() }));
+
+    files.set(id, { id, ...data, updatedAt: Date.now() });
+    writeCache();
+}
+
+// Also takes the photo away as profile photo from anyone using it, in the same batch
+export async function deleteFile(id) {
+    const users = getPersons().filter((p) => p.photo?.file === id);
+    await commit((batch) => {
+        batch.delete(doc(db, "files", id));
+        users.forEach((p) => batch.update(doc(db, "persons", p.id), { photo: deleteField(), updatedAt: serverTimestamp() }));
+    });
+
+    files.delete(id);
+    users.forEach((p) => persons.set(p.id, withoutPhoto(p)));
+    writeCache();
+}
+
+// photo = { file, avatar }, or null to remove the profile photo
+export async function setProfilePhoto(personId, photo) {
+    const update = { photo: photo ?? deleteField(), updatedAt: serverTimestamp() };
+    await commit((batch) => batch.update(doc(db, "persons", personId), update));
+
+    const p = persons.get(personId);
+    persons.set(personId, photo ? { ...p, photo, updatedAt: Date.now() } : withoutPhoto(p));
+    writeCache();
+}
+
+function withoutPhoto(p) {
+    const { photo, ...rest } = p;
+    return { ...rest, updatedAt: Date.now() };
+}
+
+// ---------- File categories ----------
+
+export async function addCategory(name) {
+    const ref = doc(collection(db, "categories"));
+    await commit((batch) => batch.set(ref, { name }));
+
+    categories.set(ref.id, { id: ref.id, name });
+    writeCache();
+    return ref.id;
+}
+
+export async function renameCategory(id, name) {
+    await commit((batch) => batch.set(doc(db, "categories", id), { name }));
+
+    categories.set(id, { id, name });
+    writeCache();
+}
+
+// The files in it become uncategorized, in the same batch, so no file points to a missing category
+export async function deleteCategory(id) {
+    const inIt = getFiles().filter((f) => f.category === id);
+    await commit((batch) => {
+        batch.delete(doc(db, "categories", id));
+        inIt.forEach((f) => batch.update(doc(db, "files", f.id), { category: deleteField(), updatedAt: serverTimestamp() }));
+    });
+
+    categories.delete(id);
+    inIt.forEach((f) => {
+        const { category, ...rest } = f;
+        files.set(f.id, { ...rest, updatedAt: Date.now() });
+    });
     writeCache();
 }

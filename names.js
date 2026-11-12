@@ -33,3 +33,17 @@ export function compareByName(a, b) {
     const bySurname = a.surname ? sortSurname(a.surname).localeCompare(sortSurname(b.surname), undefined, opts) : 0;
     return bySurname || (a.givenNames ?? "").localeCompare(b.givenNames ?? "", undefined, opts);
 }
+
+// "José" -> "jose", so searching ignores accents and capitals
+export function normalizeName(text) {
+    return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase(); // \p{M} = any accent mark
+}
+
+// People whose name contains every typed word ("jan ke" finds "Jan Keim"), sorted by name
+export function searchPeople(people, text) {
+    const words = normalizeName(text).split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [];
+    return people
+        .filter((p) => words.every((w) => normalizeName(fullName(p)).includes(w)))
+        .sort(compareByName);
+}

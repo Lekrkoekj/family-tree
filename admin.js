@@ -106,6 +106,9 @@ async function submitPerson(event) {
     if (givenNames) person.givenNames = givenNames;
     if (surname) person.surname = surname;
     if (nickname) person.nickname = nickname;
+    // The profile photo isn't on this form; keep it, because saving replaces the whole document
+    const photo = editingPersonId && getPerson(editingPersonId)?.photo;
+    if (photo) person.photo = photo;
 
     const birth = readDate("birth", "Birth date");
     if (birth.error) return showError(errorEl, birth.error);

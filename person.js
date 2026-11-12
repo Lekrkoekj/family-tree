@@ -28,7 +28,7 @@ export function renderPerson(id) {
     $("person-tree-link").href = "#/tree/" + encodeURIComponent(id);
 
     const isHome = getHomePersonId() === id;
-    $("person-is-home").hidden = !isHome;
+    $("person-is-home").hidden = !isAdmin || !isHome; // only admins know what "home person" means
     $("person-set-home").hidden = !isAdmin || isHome;
     $("person-set-home").onclick = async () => {
         try {

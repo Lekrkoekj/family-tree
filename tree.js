@@ -173,10 +173,13 @@ function drawBox(node, label) {
     const meta = document.createElement("div");
     meta.className = "tree-meta";
     meta.textContent = [label, lifespan(p)].filter(Boolean).join(" • "); // "Grandfather • 1890 – 1960"
+    const text = document.createElement("div");
+    text.className = "tree-text";
+    text.append(name, meta);
     const info = document.createElement("div");
     info.className = "tree-info";
     info.style.width = BOX_W - 4 + "px"; // the same size in every box (minus room for the border), also in the wider selected one
-    info.append(name, meta);
+    info.append(avatar(p), text);
     box.append(info);
 
     if (node.selected) {
@@ -186,6 +189,29 @@ function drawBox(node, label) {
         box.append(details);
     }
     return box;
+}
+
+// The round profile photo, or grey initials when there is none. The photo is stored in the
+// person document itself, so this never has to download anything.
+function avatar(p) {
+    const el = document.createElement("div");
+    el.className = "tree-avatar";
+    if (p.photo?.avatar) {
+        const img = document.createElement("img");
+        img.src = p.photo.avatar;
+        img.alt = "";
+        el.append(img);
+    } else {
+        el.textContent = initials(p);
+    }
+    return el;
+}
+
+// "Johannes Pieter van den Berg" -> "JB": first given name, and the surname without "van den"
+function initials(p) {
+    const given = p.givenNames?.[0] ?? "";
+    const surnameWord = p.surname?.split(/\s+/).find((w) => /^\p{Lu}/u.test(w)) ?? p.surname ?? "";
+    return (given + (surnameWord[0] ?? "")).toUpperCase() || "?";
 }
 
 // A ">" icon as a small SVG, so it stays sharp at any size

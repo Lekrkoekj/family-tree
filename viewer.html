@@ -50,7 +50,7 @@
         <section class="screen" id="screen-admin" hidden>
             <nav class="menu">
                 <a href="#/people">People</a>
-                <a href="#/files">Files</a>
+                <a href="#/categories">File categories</a>
                 <a href="#/users">Users</a>
             </nav>
         </section>
@@ -131,19 +131,78 @@
 
         <!-- FILES SCREEN -->
         <section class="screen" id="screen-files" hidden>
-            <p class="muted">No files yet. Uploading is not built yet; the + button opens the screen it will live on.
-            </p>
+            <div class="file-filters">
+                <input id="files-search" type="search" placeholder="Search by title, description or person" autocomplete="off">
+                <div id="files-kinds" class="filter-buttons"></div>
+                <select id="files-category"></select>
+            </div>
+            <p id="files-status" class="muted" hidden></p>
+            <ul id="files-grid" class="file-grid"></ul>
+        </section>
+
+        <!-- FILE CATEGORIES (admins) -->
+        <section class="screen" id="screen-categories" hidden>
+            <p class="muted">Categories are optional labels for files, like "Birth certificates" or "Family photos".
+                Photos, videos and documents are already told apart automatically.</p>
+            <form id="category-form" class="inline-form">
+                <input id="category-name" placeholder="New category" maxlength="50">
+                <button type="submit">Add</button>
+            </form>
+            <p id="category-error" class="error" hidden></p>
+            <p id="categories-status" class="muted" hidden>No categories yet.</p>
+            <ul id="categories-list" class="list"></ul>
+        </section>
+
+        <!-- FILE PAGE -->
+        <section class="screen" id="screen-file" hidden>
+            <h2 id="file-page-title"></h2>
+            <div id="file-viewer" class="file-viewer"></div>
+            <p id="file-page-description" class="file-description"></p>
+            <dl id="file-page-facts" class="facts"></dl>
+            <div id="file-page-people" class="chips-links"></div>
+            <div id="file-page-actions" class="person-actions"></div>
         </section>
 
         <!-- ADD FILE SCREEN -->
         <section class="screen" id="screen-file-new" hidden>
-            <p>Planned fields:</p>
-            <ul>
-                <li>A file to upload, or a URL instead</li>
-                <li>Name and description</li>
-                <li>Type (worked out from the file) and, for documents, what kind of document it is</li>
-                <li>Which people it belongs to (one or more)</li>
-            </ul>
+            <form id="file-form" class="form">
+                <div class="segmented">
+                    <label><input type="radio" name="file-source" value="upload" checked> File</label>
+                    <label><input type="radio" name="file-source" value="link"> Link</label>
+                </div>
+
+                <div id="file-upload-part">
+                    <input id="file-input" type="file">
+                    <p id="file-info" class="muted" hidden></p>
+                    <img id="file-preview" alt="" hidden>
+                </div>
+                <div id="file-link-part" hidden>
+                    <input id="file-url" type="url" placeholder="https://…">
+                    <p id="file-url-info" class="muted" hidden></p>
+                </div>
+
+                <input id="file-title" placeholder="Title" maxlength="200">
+                <textarea id="file-description" placeholder="Description (optional)" maxlength="5000" rows="3"></textarea>
+
+                <fieldset>
+                    <legend>Date (optional)</legend>
+                    <input id="file-date-month" placeholder="MM" maxlength="2" inputmode="numeric">
+                    <input id="file-date-day" placeholder="DD" maxlength="2" inputmode="numeric">
+                    <input id="file-date-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
+                </fieldset>
+
+                <select id="file-category"></select>
+
+                <div class="people-field">
+                    <span>People in or about this file</span>
+                    <ul id="file-people" class="chips"></ul>
+                    <button id="file-add-person" type="button">+ Add person</button>
+                </div>
+
+                <progress id="file-progress" max="1" value="0" hidden></progress>
+                <p id="file-error" class="error" hidden></p>
+                <button id="file-submit" type="submit">Save</button>
+            </form>
         </section>
 
         <!-- USERS SCREEN -->
@@ -242,7 +301,8 @@
     </dialog>
 
     <nav id="bottom-bar">
-        <a href="#/tree" data-tab="tree">Family tree</a>
+        <a href="#/tree" data-tab="tree">Family Tree</a>
+        <a href="#/files" data-tab="files">Files</a>
         <a href="#/admin" data-tab="admin" id="admin-tab" hidden>Admin</a>
         <a href="#/account" data-tab="account">Account</a>
     </nav>
@@ -256,6 +316,9 @@
         import { initAccount, renderAccount, renderAccountEdit } from "./account.js";
         import { initPerson, renderPerson } from "./person.js";
         import { initTree, renderTree } from "./tree.js";
+        import { initFileForm, renderFileForm } from "./fileForm.js";
+        import { initFiles, renderFiles, renderFilePage } from "./filesPage.js";
+        import { initCategories, renderCategories } from "./categories.js";
         import { loadStore, clearCache } from "./store.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
@@ -275,8 +338,11 @@
             "person-edit": { title: "Edit person", tab: "admin", admin: true, parent: (id) => "#/person/" + id, screen: "person-form", param: true, render: renderPersonForm },
             "person": { title: "Person", tab: "tree", parent: (id) => "#/tree/" + id, param: true, render: renderPerson },
 
-            "files": { title: "Files", tab: "admin", admin: true, parent: "#/admin", add: "#/file/new" },
-            "file-new": { title: "Add file", tab: "admin", admin: true, parent: "#/files" },
+            "files": { title: "Files", tab: "files", add: "#/file/new", render: renderFiles },
+            "file": { title: "File", tab: "files", parent: "#/files", param: true, render: renderFilePage },
+            "categories": { title: "File categories", tab: "admin", admin: true, parent: "#/admin", render: renderCategories },
+            "file-new": { title: "Add file", tab: "files", admin: true, parent: "#/files", render: renderFileForm },
+            "file-edit": { title: "Edit file", tab: "files", admin: true, parent: (id) => "#/file/" + id, param: true, screen: "file-new", render: renderFileForm },
 
             "users": { title: "Users", tab: "admin", admin: true, parent: "#/admin", add: "#/user/new", render: renderUsers },
             "user-new": { title: "Add user", tab: "admin", admin: true, parent: "#/users", render: resetUserForm },
@@ -319,9 +385,15 @@
                 if (isAdmin) initAdmin();
                 initPerson({ isAdmin });
                 initTree();
+                if (isAdmin) {
+                    initFileForm();
+                    initCategories();
+                }
 
                 // Show the page first: screens like the tree need to know their size while drawing
                 document.body.hidden = false;
+                if (!isAdmin) delete routes.files.add; // only admins get the + to upload
+                initFiles({ isAdmin });
                 startRouter({ routes, isAdmin });
             } catch (error) {
                 console.error("Firestore error:", error);
