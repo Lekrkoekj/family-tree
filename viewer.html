@@ -67,11 +67,20 @@
                 </div>
                 <dl id="person-facts" class="facts"></dl>
 
-                <h3 class="list-header">Parents</h3>
+                <div class="section-header">
+                    <h3 class="list-header">Parents</h3>
+                    <button class="add-relative" data-kind="parent" hidden>+ Add</button>
+                </div>
                 <ul id="person-parents" class="list"></ul>
-                <h3 class="list-header">Partners</h3>
+                <div class="section-header">
+                    <h3 class="list-header">Partners</h3>
+                    <button class="add-relative" data-kind="partner" hidden>+ Add</button>
+                </div>
                 <ul id="person-partners" class="list"></ul>
-                <h3 class="list-header">Children</h3>
+                <div class="section-header">
+                    <h3 class="list-header">Children</h3>
+                    <button class="add-relative" data-kind="child" hidden>+ Add</button>
+                </div>
                 <ul id="person-children" class="list"></ul>
             </div>
         </section>
@@ -80,7 +89,7 @@
         <section class="screen" id="screen-person-form" hidden>
             <form id="person-form" class="form">
                 <input id="given-names" placeholder="Given names" maxlength="100" required>
-                <input id="surname" placeholder="Surname (at birth)" maxlength="50" required>
+                <input id="surname" placeholder="Surname at birth (if known)" maxlength="50">
                 <input id="nickname" placeholder="Nickname (optional)" maxlength="50">
 
                 <select id="gender" required>
@@ -180,6 +189,50 @@
         </section>
     </main>
 
+    <!-- PERSON PICKER: search an existing person, or create a new one -->
+    <dialog id="picker-dialog">
+        <h2 id="picker-title"></h2>
+
+        <div id="picker-search-view" class="form">
+            <input id="picker-search" type="search" placeholder="Search by name" autocomplete="off">
+            <ul id="picker-list" class="list picker-list"></ul>
+            <p id="picker-hint" class="muted" hidden></p>
+            <p id="picker-error" class="error" hidden></p>
+            <button id="picker-cancel" type="button">Cancel</button>
+        </div>
+
+        <form id="picker-new-form" class="form" hidden>
+            <input id="new-given-names" placeholder="Given names" maxlength="100" required>
+            <input id="new-surname" placeholder="Surname at birth (if known)" maxlength="50">
+            <select id="new-gender" required>
+                <option value="">Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+            </select>
+            <p id="picker-new-error" class="error" hidden></p>
+            <button id="picker-new-submit" type="submit">Create person and add relation</button>
+            <button id="picker-new-back" type="button">Back to search</button>
+        </form>
+    </dialog>
+
+    <!-- WEDDING DATE -->
+    <dialog id="wedding-dialog">
+        <h2 id="wedding-title"></h2>
+        <form id="wedding-form" class="form">
+            <fieldset>
+                <legend>Wedding date</legend>
+                <input id="wedding-month" placeholder="MM" maxlength="2" inputmode="numeric">
+                <input id="wedding-day" placeholder="DD" maxlength="2" inputmode="numeric">
+                <input id="wedding-year" placeholder="YYYY" maxlength="4" inputmode="numeric">
+            </fieldset>
+            <p class="muted">Leave all three empty to remove the date.</p>
+            <p id="wedding-error" class="error" hidden></p>
+            <button id="wedding-submit" type="submit">Save</button>
+            <button id="wedding-cancel" type="button">Cancel</button>
+        </form>
+    </dialog>
+
     <nav id="bottom-bar">
         <a href="#/tree" data-tab="tree">Family tree</a>
         <a href="#/admin" data-tab="admin" id="admin-tab" hidden>Admin</a>
@@ -197,7 +250,7 @@
         import { loadStore, clearCache } from "./store.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
-        document.getElementById("back-button").onclick = goBack;
+        document.getElementById("back-button").onclick = () => goBack();
 
         // All the screens in the app. Key = the URL after "#/" with "/" replaced by "-".
         

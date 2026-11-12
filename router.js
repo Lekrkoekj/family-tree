@@ -38,9 +38,10 @@ export function goTo(hash, { replace = false } = {}) {
  * reached from the tree and from the admin list). But if the user opened this screen directly
  * (depth 0), history.back() would leave the app, so we go to the screen's fixed parent instead.
  */
-export function goBack() {
-    if (depth > 0) history.back();
-    else goTo(currentParent ?? "#/tree", { replace: true });
+export function goBack({ steps = 1, fallback = currentParent } = {}) {
+    const possible = Math.min(steps, depth); // never step back out of the app
+    if (possible > 0) history.go(-possible);
+    else goTo(fallback ?? "#/tree", { replace: true });
 }
 
 function onHashChange() {

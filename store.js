@@ -2,7 +2,7 @@
 // meta/version = time of the last change; every write here updates it (the rules require that).
 
 import { db } from "./firebase.js";
-import { collection, doc, getDoc, getDocs, query, where, writeBatch, serverTimestamp }
+import { collection, doc, getDoc, getDocs, query, where, writeBatch, serverTimestamp, deleteField }
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
 const CACHE_KEY = "family-tree-cache";
@@ -130,5 +130,63 @@ export async function deletePerson(id) {
 
     persons.delete(id);
     relationDocs.forEach((d) => relations.delete(d.id));
+    writeCache();
+}
+
+// ---------- Relations ----------
+
+// kind is seen from personId: "parent" = otherId is their parent, "child" = otherId is their child.
+// In parent-child, personA is the parent. Partners are stored with the ids sorted, so there is one per couple.
+export function makeRelation(personId, kind, otherId) {
+    let relation;
+    if (kind === "parent") relation = { personA: otherId, personB: personId, type: "parent-child" };
+    else if (kind === "child") relation = { personA: personId, personB: otherId, type: "parent-child" };
+    else {
+        const [a, b] = [personId, otherId].sort();
+        relation = { personA: a, personB: b, type: "partner" };
+    }
+    return { id: relation.personA + "_" + relation.personB, ...relation };
+}
+
+export async function addRelation(relation) {
+    const { id, ...data } = relation;
+    await commit((batch) => batch.set(doc(db, "relations", id), data));
+
+    relations.set(id, relation);
+    writeCache();
+}
+
+// Creates a new person and their relation in one batch. Returns the new person's id.
+export async function addPersonWithRelation(personData, personId, kind) {
+    const ref = doc(collection(db, "persons"));
+    const relation = makeRelation(personId, kind, ref.id);
+    const { id, ...relationData } = relation;
+
+    await commit((batch) => {
+        batch.set(ref, { ...personData, updatedAt: serverTimestamp() });
+        batch.set(doc(db, "relations", id), relationData);
+    });
+
+    persons.set(ref.id, { id: ref.id, ...personData, updatedAt: Date.now() });
+    relations.set(id, relation);
+    writeCache();
+    return ref.id;
+}
+
+export async function removeRelation(id) {
+    await commit((batch) => batch.delete(doc(db, "relations", id)));
+
+    relations.delete(id);
+    writeCache();
+}
+
+// date = "YYYY", "YYYY-MM", "YYYY-MM-DD", or null to remove it
+export async function setWeddingDate(id, date) {
+    await commit((batch) => batch.update(doc(db, "relations", id), { weddingDate: date ?? deleteField() }));
+
+    const relation = { ...relations.get(id) };
+    if (date) relation.weddingDate = date;
+    else delete relation.weddingDate;
+    relations.set(id, relation);
     writeCache();
 }

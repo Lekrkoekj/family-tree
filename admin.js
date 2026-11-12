@@ -3,48 +3,9 @@ import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, serverT
     from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { goBack, goTo } from "./router.js";
 import { $, showError, friendlyError, displayName } from "./ui.js";
-import { daysInMonth, lifespan } from "./dates.js";
+import { lifespan, readDate, fillDate } from "./dates.js";
 import { getPerson, getPersons, savePerson, deletePerson } from "./store.js";
 import { fullName, listName, compareByName } from "./names.js";
-
-// ---------- Date input ----------
-
-// Reads the three inputs, e.g. "birth" -> birth-year, birth-month, birth-day.
-// Returns { value: "YYYY" | "YYYY-MM" | "YYYY-MM-DD" | null } or { error: "message" }
-function readDate(prefix, label) {
-    const year = $(prefix + "-year").value.trim();
-    const month = $(prefix + "-month").value.trim();
-    const day = $(prefix + "-day").value.trim();
-
-    // Everything empty = unknown, so the field won't be saved
-    if (year === "" && month === "" && day === "") return { value: null };
-
-    // Any date needs a year, and a day needs a month
-    if (year === "") return { error: label + ": enter a year." };
-    if (day !== "" && month === "") return { error: label + ": enter a month as well as a day." };
-
-    if (!/^\d{4}$/.test(year) || Number(year) === 0) {
-        return { error: label + ": the year must have 4 digits." };
-    }
-    let result = year;
-
-    if (month !== "") {
-        if (!/^\d{1,2}$/.test(month) || Number(month) < 1 || Number(month) > 12) {
-            return { error: label + ": the month must be between 1 and 12." };
-        }
-        result += "-" + month.padStart(2, "0"); // the rules need "05", not "5"
-    }
-
-    if (day !== "") {
-        const maxDay = daysInMonth(Number(year), Number(month));
-        if (!/^\d{1,2}$/.test(day) || Number(day) < 1 || Number(day) > maxDay) {
-            return { error: label + ": that month has " + maxDay + " days." };
-        }
-        result += "-" + day.padStart(2, "0");
-    }
-
-    return { value: result };
-}
 
 // ---------- People ----------
 
@@ -53,7 +14,7 @@ export function renderPeople() {
 
     const items = people.map((p) => {
         const name = document.createElement("div");
-        name.textContent = listName(p); // textContent: never put user data in innerHTML
+        name.append(...listName(p));
         const meta = document.createElement("div");
         meta.className = "muted";
         meta.textContent = lifespan(p);
@@ -79,14 +40,6 @@ export function renderPeople() {
 
 let editingPersonId = null; // null = adding a new person
 
-// "1931-05" -> 1931 / 05 / empty in the three boxes
-function fillDate(prefix, value) {
-    const [year, month, day] = (value ?? "").split("-");
-    $(prefix + "-year").value = year ?? "";
-    $(prefix + "-month").value = month ?? "";
-    $(prefix + "-day").value = day ?? "";
-}
-
 // Used by both #/person/new (id = null) and #/person/edit/<id>
 export function renderPersonForm(id) {
     $("person-form").reset();
@@ -108,7 +61,7 @@ export function renderPersonForm(id) {
     if (!p) return;
 
     $("given-names").value = p.givenNames;
-    $("surname").value = p.surname;
+    $("surname").value = p.surname ?? "";
     $("nickname").value = p.nickname ?? "";
     $("gender").value = p.gender;
     fillDate("birth", p.birthDate);
@@ -125,7 +78,8 @@ async function removePerson() {
     remove.disabled = true;
     try {
         await deletePerson(id);
-        goTo("#/people", { replace: true });
+        // Skip both this edit screen and the deleted person's details page
+        goBack({ steps: 2, fallback: "#/people" });
     } catch (error) {
         console.error("Could not delete person:", error);
         showError($("person-error"), friendlyError(error));
@@ -143,12 +97,13 @@ async function submitPerson(event) {
     const nickname = $("nickname").value.trim();
     const gender = $("gender").value;
 
-    if (givenNames === "" || surname === "") return showError(errorEl, "Please fill in the given names and surname.");
+    if (givenNames === "") return showError(errorEl, "Please fill in the given names.");
     if (!["male", "female", "other"].includes(gender)) return showError(errorEl, "Please choose a gender.");
 
     // Firestore throws on undefined and the rules reject empty strings,
     // so optional fields are only added when they are filled in.
-    const person = { givenNames, surname, gender };
+    const person = { givenNames, gender };
+    if (surname) person.surname = surname;
     if (nickname) person.nickname = nickname;
 
     const birth = readDate("birth", "Birth date");

@@ -3,11 +3,13 @@ import { $ } from "./ui.js";
 import { formatDate, lifespan, age } from "./dates.js";
 import { getPerson, getRelations } from "./store.js";
 import { fullName } from "./names.js";
+import { initRelations, openPicker, confirmRemove, openWedding } from "./relations.js";
 
 let isAdmin = false;
 
 export function initPerson(options) {
     isAdmin = options.isAdmin;
+    if (isAdmin) initRelations();
 }
 
 export function renderPerson(id) {
@@ -23,9 +25,17 @@ export function renderPerson(id) {
     $("person-facts").replaceChildren(...facts(p));
 
     const relatives = findRelatives(id);
-    fillRelatives("person-parents", relatives.parents, "Unknown");
-    fillRelatives("person-partners", relatives.partners, "None");
-    fillRelatives("person-children", relatives.children, "None");
+    const rerender = () => renderPerson(id);
+    fillRelatives("person-parents", relatives.parents, "Unknown", "parent", id, rerender);
+    fillRelatives("person-partners", relatives.partners, "None", "partner", id, rerender);
+    fillRelatives("person-children", relatives.children, "None", "child", id, rerender);
+
+    // Nobody has more than two parents, so the button goes away at two
+    document.querySelectorAll(".add-relative").forEach((button) => {
+        const kind = button.dataset.kind;
+        button.hidden = !isAdmin || (kind === "parent" && relatives.parents.length >= 2);
+        button.onclick = () => openPicker(id, kind, rerender);
+    });
 }
 
 // The rows of the Born / Died list
@@ -63,7 +73,7 @@ function findRelatives(id) {
         else continue;
 
         const other = getPerson(otherId);
-        if (other) result[group].push({ ...other, weddingDate: r.weddingDate });
+        if (other) result[group].push({ ...other, relationId: r.id, weddingDate: r.weddingDate });
     }
 
     const byBirth = (a, b) => (a.birthDate ?? "9999").localeCompare(b.birthDate ?? "9999");
@@ -73,7 +83,7 @@ function findRelatives(id) {
     return result;
 }
 
-function fillRelatives(listId, people, emptyText) {
+function fillRelatives(listId, people, emptyText, kind, personId, rerender) {
     if (people.length === 0) {
         const li = document.createElement("li");
         li.className = "muted";
@@ -100,6 +110,27 @@ function fillRelatives(listId, people, emptyText) {
 
         const li = document.createElement("li");
         li.append(link);
+        if (isAdmin) li.append(relativeActions(p, kind, personId, rerender));
         return li;
     }));
+}
+
+function relativeActions(p, kind, personId, rerender) {
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    if (kind === "partner") {
+        const weddingButton = document.createElement("button");
+        weddingButton.textContent = p.weddingDate ? "Edit wedding" : "Add wedding";
+        weddingButton.onclick = () => openWedding(p.relationId, rerender);
+        actions.append(weddingButton);
+    }
+
+    const remove = document.createElement("button");
+    remove.textContent = "×";
+    remove.className = "danger";
+    remove.setAttribute("aria-label", "Remove " + kind);
+    remove.onclick = () => confirmRemove(p.relationId, p.id, kind, personId, rerender);
+    actions.append(remove);
+    return actions;
 }

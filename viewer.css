@@ -151,6 +151,11 @@ body {
     color: #c00;
 }
 
+/* Missing information shown in place of a value, e.g. an unknown surname */
+.unknown {
+    color: #888;
+}
+
 .danger {
     color: #c00;
 }
@@ -192,6 +197,66 @@ a.button {
 
 #person-details .list {
     margin-bottom: 20px;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ---------- Dialogs ---------- */
+dialog {
+    width: min(28rem, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+dialog h2 {
+    margin: 0 0 12px;
+    font-size: 1.1rem;
+}
+
+dialog input[type="search"] {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 1rem;
+    padding: 8px;
+}
+
+/* Every row has the same height, so the list can be exactly 5 rows tall and scroll for the rest */
+.picker-list {
+    --row-height: 3.25rem;
+    max-height: calc(5 * (var(--row-height) + 1px)); /* + each row's 1px bottom border */
+    overflow-y: auto;
+    border-top: 1px solid #eee;
+}
+
+.picker-list li {
+    padding: 0;
+}
+
+.picker-list li > button {
+    width: 100%;
+    height: var(--row-height);
+    box-sizing: border-box;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.picker-list li > button:hover {
+    background: #f4f4f4;
+}
+
+.picker-list li > button.picker-new {
+    font-weight: bold;
 }
 
 #screen-account .menu {
