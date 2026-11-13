@@ -5,6 +5,7 @@ import { getPerson, getPersons, getRelations, getHomePersonId, getLastSelected, 
 import { fullName, compareByName } from "./names.js";
 import { layoutTree, BOX_W, BOX_H, SELECTED_W } from "./treeLayout.js";
 import { relationshipLabeler } from "./relationships.js";
+import { iconButton } from "./icons.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD = 6; // pixels; moving less than this still counts as a click
@@ -13,7 +14,12 @@ const EASE = DURATION + "ms ease";
 const CHIP_H = 18;     // the "↑ 12" chips sit half over the top or bottom edge of a box
 const CHIP_RIGHT = 14; // distance from the box's right edge, away from where lines connect
 
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 1.5;
+const ZOOM_KEY = "family-tree-zoom"; // remembered per browser
+
 let offset = { x: 0, y: 0 }; // where the layer's (0, 0) is on screen; (0, 0) = the selected person
+let scale = readZoom();      // 1 = 100%. A point (x, y) in the tree is on screen at offset + (x, y) * scale
 let shown = new Map();       // id -> { x, y } of the boxes on screen now
 let clicked = null;          // { id, x, y } of the box that was clicked, for the build-up animation
 let sliding = false;         // true during phase 1, so a second click can't start another one
@@ -58,7 +64,7 @@ export function renderTree(id) {
 
     const canvas = $("tree-canvas");
     canvasSize = { w: canvas.clientWidth, h: canvas.clientHeight };
-    const center = { x: canvasSize.w / 2 - SELECTED_W / 2, y: canvasSize.h / 2 - BOX_H / 2 };
+    const center = centeredOffset();
     const from = clicked?.id === id ? clicked : null;
     clicked = null;
     setOffset(center.x, center.y);
@@ -67,8 +73,8 @@ export function renderTree(id) {
     // Phase 2: phase 1 slid the clicked box to the middle, so on screen nothing should jump.
     // Every box starts where it was on screen and glides to its new place.
     // People who weren't visible yet start hidden in the middle and grow out from there.
-    // Screen position = layer offset + box position. The offset was (center - from) and is now
-    // center, so a box that was at `old` needs a start shift of old - from - new.
+    // Screen position = offset + position * scale. The offset was (center - from * scale) and is now
+    // center, so a box that was at `old` needs a start shift (in tree pixels) of old - from - new.
     nodes.forEach((n, i) => {
         const old = n.selected ? from : previous.get(n.id);
         const isFirst = shown.get(n.id).x === n.x && shown.get(n.id).y === n.y;
@@ -125,10 +131,10 @@ function selectFromTree(node) {
         return;
     }
 
-    const canvas = $("tree-canvas");
     sliding = true;
     // Slide to where the (wider) selected box will be, so phase 2 starts without a jump
-    setOffset(canvas.clientWidth / 2 - SELECTED_W / 2 - node.x, canvas.clientHeight / 2 - BOX_H / 2 - node.y, true);
+    const center = centeredOffset();
+    setOffset(center.x - node.x * scale, center.y - node.y * scale, true);
     setTimeout(() => {
         sliding = false;
         clicked = { id: node.id, x: node.x, y: node.y };
@@ -230,40 +236,162 @@ function setOffset(x, y, animate = false) {
     offset = { x, y };
     const layer = $("tree-layer");
     layer.style.transition = animate ? "transform " + EASE : "none";
-    layer.style.transform = "translate(" + x + "px, " + y + "px)";
+    layer.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
 }
 
-// ---------- Dragging ----------
+// The offset that puts the (wider) selected box, at (0, 0) in the tree, in the middle of the canvas
+function centeredOffset() {
+    const canvas = $("tree-canvas");
+    return { x: canvas.clientWidth / 2 - SELECTED_W / 2 * scale, y: canvas.clientHeight / 2 - BOX_H / 2 * scale };
+}
+
+// ---------- Zooming ----------
+
+// Zooms to `newScale` while the point (px, py) on the canvas stays where it is (under the mouse, between the fingers).
+// That point is (p - offset) / scale in the tree; keeping it under p gives: offset = p - (p - offset) * new / old.
+function zoomTo(newScale, px, py, animate = false) {
+    newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
+    const ratio = newScale / scale;
+    scale = newScale;
+    setOffset(px - (px - offset.x) * ratio, py - (py - offset.y) * ratio, animate);
+    zoomChanged();
+}
+
+function zoomChanged() {
+    try {
+        localStorage.setItem(ZOOM_KEY, String(scale));
+    } catch { }
+    updateZoomButtons();
+}
+
+function readZoom() {
+    try {
+        const saved = Number(localStorage.getItem(ZOOM_KEY));
+        return saved >= MIN_ZOOM && saved <= MAX_ZOOM ? saved : 1;
+    } catch {
+        return 1;
+    }
+}
+
+// + and - zoom around the middle of the canvas. The third button puts the selected person back in the
+// middle; pressed again when they already are, it goes back to 100%.
+function zoomButtons() {
+    const canvas = $("tree-canvas");
+    const step = (factor) => () => zoomTo(scale * factor, canvas.clientWidth / 2, canvas.clientHeight / 2, true);
+    const center = () => {
+        const c = centeredOffset();
+        const alreadyCentered = Math.abs(offset.x - c.x) < 1 && Math.abs(offset.y - c.y) < 1;
+        if (alreadyCentered) zoomTo(1, canvas.clientWidth / 2, canvas.clientHeight / 2, true); // the middle stays the middle
+        else setOffset(c.x, c.y, true);
+    };
+    const controls = document.createElement("div");
+    controls.id = "tree-controls";
+    controls.append(
+        iconButton("plus", "Zoom in", step(1.25)),
+        iconButton("minus", "Zoom out", step(1 / 1.25)),
+        iconButton("center", "Back to the selected person (press again for 100%)", center),
+    );
+    // Pressing a button shouldn't start dragging the tree, and is always a click
+    // (after a pinch `dragged` can still be true, because a pinch doesn't end with a click)
+    controls.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        dragged = false;
+    });
+    return controls;
+}
+
+function updateZoomButtons() {
+    const [plus, minus] = document.querySelectorAll("#tree-controls button");
+    if (!plus) return;
+    plus.disabled = scale >= MAX_ZOOM - 0.001;
+    minus.disabled = scale <= MIN_ZOOM + 0.001;
+}
+
+// ---------- Dragging and pinching ----------
 
 export function initTree() {
     const canvas = $("tree-canvas");
-    let start = null;
+    canvas.append(zoomButtons());
+    updateZoomButtons();
+
+    // Every finger (or the mouse button) that's down on the canvas, and the gesture they started.
+    // One pointer drags; two pinch (zoom) and drag at the same time, following the point between them.
+    const pointers = new Map(); // pointerId -> { x, y } on the canvas
+    let gesture = null;
+    const toCanvas = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+
+    // Called whenever a finger is added or lifted: start over from where things are now
+    const startGesture = () => {
+        const [a, b] = pointers.values();
+        if (!a) gesture = null;
+        else if (!b) gesture = { type: "drag", start: a, offset: { ...offset } };
+        else gesture = {
+            type: "pinch",
+            distance: Math.hypot(a.x - b.x, a.y - b.y),
+            middle: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+            offset: { ...offset },
+            scale,
+        };
+    };
 
     canvas.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return; // left mouse button, or a finger
-        start = { pointer: e.pointerId, x: e.clientX, y: e.clientY, offsetX: offset.x, offsetY: offset.y };
-        dragged = false;
+        if (pointers.size === 0) dragged = false;
+        pointers.set(e.pointerId, toCanvas(e));
+        if (pointers.size === 2) {
+            dragged = true; // a pinch is never a click
+            canvas.classList.add("dragging");
+        }
+        startGesture();
     });
 
     canvas.addEventListener("pointermove", (e) => {
-        if (!start || e.pointerId !== start.pointer) return;
-        const dx = e.clientX - start.x;
-        const dy = e.clientY - start.y;
-        if (!dragged) {
-            if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-            dragged = true;
-            canvas.setPointerCapture(e.pointerId); // keep getting moves, even outside the canvas
-            canvas.classList.add("dragging");
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, toCanvas(e));
+
+        if (gesture?.type === "drag") {
+            const now = pointers.get(e.pointerId);
+            const dx = now.x - gesture.start.x;
+            const dy = now.y - gesture.start.y;
+            if (!dragged) {
+                if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+                dragged = true;
+                canvas.setPointerCapture(e.pointerId); // keep getting moves, even outside the canvas
+                canvas.classList.add("dragging");
+            }
+            setOffset(gesture.offset.x + dx, gesture.offset.y + dy);
+        } else if (gesture?.type === "pinch") {
+            const [a, b] = pointers.values();
+            const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, gesture.scale * Math.hypot(a.x - b.x, a.y - b.y) / gesture.distance));
+            // The tree point that was between the fingers at the start stays between them
+            const treeX = (gesture.middle.x - gesture.offset.x) / gesture.scale;
+            const treeY = (gesture.middle.y - gesture.offset.y) / gesture.scale;
+            scale = newScale;
+            setOffset(middle.x - treeX * scale, middle.y - treeY * scale);
+            zoomChanged();
         }
-        setOffset(start.offsetX + dx, start.offsetY + dy);
     });
 
-    const stop = () => {
-        start = null;
-        canvas.classList.remove("dragging");
+    const lift = (e) => {
+        if (!pointers.delete(e.pointerId)) return;
+        startGesture(); // e.g. one finger left after a pinch: continue as a drag from here
+        if (pointers.size === 0) canvas.classList.remove("dragging");
     };
-    canvas.addEventListener("pointerup", stop);
-    canvas.addEventListener("pointercancel", stop);
+    canvas.addEventListener("pointerup", lift);
+    canvas.addEventListener("pointercancel", lift);
+
+    // Mouse wheel zooms around the mouse. A trackpad pinch arrives as a wheel event with ctrlKey and small steps.
+    canvas.addEventListener("wheel", (e) => {
+        e.preventDefault(); // don't scroll the page
+        const pixels = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // some mice report lines instead of pixels
+        const factor = Math.exp(-pixels * (e.ctrlKey ? 0.01 : 0.0015));
+        const p = toCanvas(e);
+        zoomTo(scale * factor, p.x, p.y);
+    }, { passive: false });
 
     // A drag that happens to end on a box should not also select that box.
     // `true` = capture phase: this runs before the box's own click handler.

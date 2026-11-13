@@ -7,7 +7,7 @@ import { fullName } from "./names.js";
 import { initRelations, openPicker, confirmRemove, openWedding } from "./relations.js";
 import { fileSections, renderFileView, fileActions } from "./filesPage.js";
 import { blobUrl } from "./storage.js";
-import { iconButton } from "./icons.js";
+import { icon, iconButton } from "./icons.js";
 
 let isAdmin = false;
 let editing = false; // true on #/person/<id>/edit: the left column shows the form instead of the details
@@ -18,6 +18,8 @@ const isDesktop = () => matchMedia("(min-width: 800px)").matches;
 export function initPerson(options) {
     isAdmin = options.isAdmin;
     if (isAdmin) initRelations();
+    $("person-tree-link").prepend(icon("tree"));
+    $("person-set-home").prepend(icon("home"));
 
     // Desktop: the name appears in the left bar once the big name has scrolled out of view
     // (while editing the bar says "Edit person" instead)

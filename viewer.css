@@ -388,12 +388,35 @@ body {
     margin: 0;
 }
 
-a.button {
+/* The same look for links and real buttons with class="button" */
+.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 14px;
     border: 1px solid #ccc;
     border-radius: 6px;
+    background: #fff;
     color: inherit;
+    font: inherit;
+    font-size: 0.95rem;
     text-decoration: none;
+    cursor: pointer;
+}
+
+.button:hover {
+    background: #f4f4f4;
+}
+
+/* An icon in front of the text, e.g. the tree on "View in tree" */
+.button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .facts {
@@ -409,6 +432,13 @@ a.button {
     align-items: center;
     gap: 8px 12px;
     margin-bottom: 24px;
+}
+
+/* A line between the buttons and the relatives below them */
+#person-view-part .person-actions {
+    padding-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 20px;
 }
 
 .facts dt {
@@ -456,11 +486,38 @@ a.button {
     cursor: grabbing;
 }
 
-/* Everything in the tree lives in this layer; moving it moves the whole tree */
+/* Everything in the tree lives in this layer; moving it moves the whole tree.
+   transform-origin 0 0: zooming (scale) happens from the layer's top-left corner, which the zoom maths in tree.js assumes */
 #tree-layer {
     position: absolute;
     left: 0;
     top: 0;
+    transform-origin: 0 0;
+}
+
+/* + / − / back-to-selected, in the bottom-right corner of the tree */
+#tree-controls {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 5;
+    display: grid;
+    gap: 6px;
+}
+
+#tree-controls .icon-button {
+    border: 1px solid #ccc;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+#tree-controls .icon-button:hover {
+    background: #f4f4f4;
+}
+
+#tree-controls .icon-button:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 
 #tree-lines {
