@@ -1059,7 +1059,14 @@ body {
 /* Websites, audio and other files: a grey card */
 .file-preview.card {
     background: #f7f7f5; /* the family tree's background */
-    touch-action: pan-y; /* scrolling up and down stays the browser's; sideways is a swipe to the next file */
+}
+
+/* Scrolling up and down stays the browser's; sideways is a swipe to the next file (fileViewer.js).
+   The scrolling areas need it themselves: what's set outside a scrolling area doesn't count inside it. */
+.file-preview.card,
+.preview-card,
+.preview-caption {
+    touch-action: pan-y;
 }
 
 .preview-card {

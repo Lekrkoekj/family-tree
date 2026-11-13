@@ -142,10 +142,12 @@ document.addEventListener("keydown", (e) => {
 });
 
 // A sideways swipe with one finger. allowed(): checked when the finger goes down (e.g. not while zoomed in).
+// Not on a video or audio player: there a sideways drag moves through the recording.
 function onSwipe(el, go, allowed = () => true) {
     let start = null;
     el.addEventListener("pointerdown", (e) => {
         if (e.pointerType !== "touch") return;
+        if (e.target.closest("video, audio, input")) return;
         start = start ? "several" : { x: e.clientX, y: e.clientY, allowed: allowed() }; // a second finger: a pinch, not a swipe
     });
     el.addEventListener("pointerup", (e) => {
@@ -198,7 +200,7 @@ function photoLayout(preview, f, alive, nav) {
     preview.append(backdrop, stage, overlay);
 
     let isFitted = () => true; // swiping only while the whole photo is in view; zoomed in, a drag moves the photo
-    onSwipe(stage, nav.go, () => isFitted());
+    onSwipe(preview, nav.go, () => isFitted()); // on the photo and on the caption
 
     const failed = () => {
         preview.replaceChildren();
@@ -315,6 +317,8 @@ function stripLayout(preview, f, alive, nav) {
     // Halfway up the whole viewer, like for photos and cards, so the arrows stay in the same spot when clicking through.
     // The strip is at most 40% high, so that's still beside the video / PDF.
     preview.append(...nav.elements());
+    // Only outside YouTube and the PDF: touches inside an iframe never reach this page
+    onSwipe(preview, nav.go);
     nav.preload();
 
     const failed = (error) => media.replaceChildren(note(friendlyError(error)));
