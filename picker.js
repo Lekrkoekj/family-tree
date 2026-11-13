@@ -17,6 +17,7 @@ let initialized = false;
 //   title           "Add parent of Jan Keim"
 //   newPersonTitle  "Add new person as a parent of Jan Keim"
 //   exclude         Set of ids that may not be picked
+//   allowNew        false hides "+ New person" (default true)
 //   onPick(choice)  async; choice is { id } for an existing person or { newPerson: data } for "+ New person".
 //                   The popup stays open (and shows the error) until it succeeds.
 export function openPicker(pickerOptions) {
@@ -69,7 +70,9 @@ function renderResults() {
     }
 
     const list = $("picker-list");
-    list.replaceChildren(newPersonItem(), ...shown.map(resultItem));
+    const items = shown.map(resultItem);
+    if (options.allowNew !== false) items.unshift(newPersonItem());
+    list.replaceChildren(...items);
     list.scrollTop = 0;
     $("picker-hint").textContent = hint;
     $("picker-hint").hidden = !hint;

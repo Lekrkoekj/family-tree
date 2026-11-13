@@ -7,6 +7,7 @@ const PATHS = {
     back: ["M15 6l-6 6 6 6"],
     close: ["M6 6l12 12", "M18 6L6 18"],
     plus: ["M12 5v14", "M5 12h14"],
+    search: ["M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0", "M16 16l4 4"], // a magnifying glass
     minus: ["M5 12h14"],
     center: ["M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0", "M12 3v3", "M12 18v3", "M3 12h3", "M18 12h3"], // a circle with marks: "aim"
     home: ["M4 11l8-7 8 7", "M6 9.5V20h12V9.5", "M10 20v-6h4v6"], // roof, walls, door

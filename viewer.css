@@ -559,9 +559,10 @@ body {
     background: #f4f4f4;
 }
 
-/* Avatar + text. Its width is set in tree.js, so it's the same in every box */
+/* Avatar + text, filling the box */
 .tree-info {
-    flex: none;
+    flex: 1;
+    min-width: 0;
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -646,21 +647,19 @@ body {
     background: #f4f4f4;
 }
 
-/* "View details" and a ">" icon in the extra part of the selected box, behind a dividing line */
+/* "View details ›" under the name and years of the selected box (the whole box is the link) */
 .tree-details {
-    flex: 1;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border-left: 1px solid #ccc;
-    font-size: 0.85rem;
+    gap: 2px;
+    font-size: 0.8rem;
+    font-weight: 600;
     white-space: nowrap;
 }
 
 .tree-details .chevron {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;

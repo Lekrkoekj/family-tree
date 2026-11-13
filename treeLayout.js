@@ -6,16 +6,19 @@
 
 export const BOX_W = 220;
 export const BOX_H = 84;        // room for a 2-line name and a 2-line "label • years"
-export const DETAILS_W = 110;   // the extra "View details" part on the right of the selected box
-export const SELECTED_W = BOX_W + DETAILS_W;
 const H_GAP = 24;  // between boxes in a row
 const V_GAP = 64;  // between rows
 const ROW = BOX_H + V_GAP;
 const UP = 3;      // generations of ancestors
 const DOWN = 2;    // generations of descendants
 // persons: Map id -> person, relations: array of relation objects.
-// Returns { nodes: [{ id, x, y, width, selected?, duplicate?, moreUp?, moreDown? }], lines: [[[x, y], ...], ...] }
+// Returns { nodes: [{ id, x, y, width, appear, selected?, duplicate?, moreUp?, moreDown? }], lines: [{ points: [[x, y], ...], start }] }
 // moreUp / moreDown = { people, generations }: ancestors / descendants of that person who aren't in the tree.
+//
+// For the build-up animation the tree is "drawn" outward from the selected person, like with a pen:
+// every line starts at the end nearest the selected person and takes 1 time step to draw.
+// `start` = the step at which a line starts; `appear` = the step at which a box appears (when its line reaches it).
+// A line starts as soon as whatever it grows out of is there: a box, or the line it branches off.
 export function layoutTree(rootId, persons, relations) {
     const g = buildGraph(persons, relations);
     const out = { nodes: [], lines: [] };
@@ -113,6 +116,7 @@ function genderOrder(p) {
 // generation above is spread over the same total width, so each couple sits centred above their child.
 function layoutAncestors(g, rootId, out) {
     const levels = [];
+    const times = [[0]]; // times[gen][slot] = when that box appears
     let previous = [rootId];
     for (let gen = 1; gen <= UP; gen++) {
         const level = previous.flatMap((id) => (id ? g.parentsOf(id) : [null, null]));
@@ -130,9 +134,11 @@ function layoutAncestors(g, rootId, out) {
         const y = -gen * ROW;
         const mid = y + BOX_H / 2;
 
-        ids.forEach((id, j) => {
-            if (id) out.nodes.push({ id, x: slotCenter(gen, j) - BOX_W / 2, y });
-        });
+        times[gen] = [];
+        const addParent = (j, appear) => {
+            out.nodes.push({ id: ids[j], x: slotCenter(gen, j) - BOX_W / 2, y, appear });
+            times[gen][j] = appear;
+        };
 
         // Each pair of slots (2j, 2j+1) are the parents of slot j one generation down
         for (let j = 0; j < ids.length / 2; j++) {
@@ -141,16 +147,23 @@ function layoutAncestors(g, rootId, out) {
             const childX = slotCenter(gen - 1, j);
             // For the selected person's parents the line ends at the siblings' bar instead
             const end = gen === 1 ? -V_GAP / 2 : y + ROW;
+            // Drawn upward from the child. For the selected person, their own line up to the siblings' bar comes first (layoutSiblings).
+            const start = gen === 1 ? 1 : times[gen - 1][j];
 
             if (a && b) {
-                out.lines.push([[slotCenter(gen, 2 * j) + BOX_W / 2, mid], [slotCenter(gen, 2 * j + 1) - BOX_W / 2, mid]]);
-                out.lines.push([[childX, mid], [childX, end]]);
+                // Up to the middle of the line between the parents, then out to both of them
+                addLine(out.lines, [[childX, end], [childX, mid]], start);
+                addLine(out.lines, [[childX, mid], [slotCenter(gen, 2 * j) + BOX_W / 2, mid]], start + 1);
+                addLine(out.lines, [[childX, mid], [slotCenter(gen, 2 * j + 1) - BOX_W / 2, mid]], start + 1);
+                addParent(2 * j, start + 2);
+                addParent(2 * j + 1, start + 2);
             } else {
                 // One known parent: down from them, then sideways to above the child.
                 // Turns close under the parent, so it stays above the lines to the selected person's partners.
                 const px = slotCenter(gen, a ? 2 * j : 2 * j + 1);
                 const turn = y + BOX_H + 8;
-                out.lines.push([[px, y + BOX_H], [px, turn], [childX, turn], [childX, end]]);
+                addLine(out.lines, [[childX, end], [childX, turn], [px, turn], [px, y + BOX_H]], start);
+                addParent(a ? 2 * j : 2 * j + 1, start + 1);
             }
         }
     });
@@ -161,30 +174,29 @@ function layoutAncestors(g, rootId, out) {
 function layoutSiblings(g, rootId, out) {
     const parents = g.parentsOf(rootId).filter(Boolean);
     if (parents.length === 0) return;
+    const barY = -V_GAP / 2;
+    addLine(out.lines, [[BOX_W / 2, 0], [BOX_W / 2, barY]], 0); // from the selected person up to the bar
 
     // Children of either parent, so half-siblings are included too
     const siblings = [...new Set(parents.flatMap((p) => g.childrenOf(p)))].filter((id) => id !== rootId);
+    if (siblings.length === 0) return;
     const step = BOX_W + H_GAP;
-    const centers = siblings.map((id, i) => {
+    addLine(out.lines, [[BOX_W / 2, barY], [-siblings.length * step + BOX_W / 2, barY]], 1); // out to the oldest, on the left
+    siblings.forEach((id, i) => {
         const x = -(siblings.length - i) * step;
-        out.nodes.push({ id, x, y: 0 });
-        return x + BOX_W / 2;
+        addLine(out.lines, [[x + BOX_W / 2, barY], [x + BOX_W / 2, 0]], 2);
+        out.nodes.push({ id, x, y: 0, appear: 3 });
     });
-
-    const barY = -V_GAP / 2;
-    centers.push(BOX_W / 2);
-    out.lines.push([[Math.min(...centers), barY], [BOX_W / 2, barY]]);
-    centers.forEach((x) => out.lines.push([[x, barY], [x, 0]]));
 }
 
 // ---------- Descendants: a person, their partners, and their children below ----------
 
 // Returns a "unit" laid out around the person at (0, 0): { nodes, lines, minX, maxX }.
+// Its times count from the moment this person appears.
 // Children are grouped per partner. Each group hangs centred under its own drop line, and when
 // groups need more room, the partners above are pushed apart so no lines cross.
 function layoutUnit(g, id, levelsBelow, isRoot = false) {
-    const ownWidth = isRoot ? SELECTED_W : BOX_W; // the selected person's box is wider
-    const unit = { nodes: [{ id, x: 0, y: 0, width: ownWidth }], lines: [], minX: 0, maxX: ownWidth };
+    const unit = { nodes: [{ id, x: 0, y: 0, appear: 0 }], lines: [], minX: 0, maxX: BOX_W };
     const partners = levelsBelow >= 1 ? g.partnersOf(id) : [];
     const kids = levelsBelow >= 1 ? g.childrenOf(id) : [];
 
@@ -196,7 +208,7 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
     }
 
     const barY = BOX_H + V_GAP / 2;
-    let rowRight = ownWidth;  // right edge of the last box in this row
+    let rowRight = BOX_W;     // right edge of the last box in this row
     let nextFree = -Infinity; // where the next group of children may start
 
     groups.forEach((group, k) => {
@@ -210,12 +222,12 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
         let dropFromY = BOX_H; // group 0 drops from the bottom of the person
         if (k > 0) {
             const px = dropX + H_GAP / 2;
-            unit.nodes.push({ id: group.partner, x: px, y: 0, width: BOX_W });
+            unit.nodes.push({ id: group.partner, x: px, y: 0, appear: 1 });
             rowRight = px + BOX_W;
 
             if (k === 1) {
                 // First partner: a straight line between the two
-                unit.lines.push([[ownWidth, BOX_H / 2], [px, BOX_H / 2]]);
+                addLine(unit.lines, [[BOX_W, BOX_H / 2], [px, BOX_H / 2]], 0);
                 dropFromY = BOX_H / 2;
             } else {
                 // Later partners: a line over the earlier partners, each one higher and starting further left.
@@ -223,23 +235,27 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
                 // the bar that connects them to their siblings.
                 const height = isRoot ? Math.min(16 + (k - 2) * 14, 52) : Math.min(14 + (k - 2) * 8, 28); // starts at 14: leaves room for a "more" chip on the box edge
                 const startX = BOX_W - 16 - (k - 2) * 12;
-                unit.lines.push([[startX, 0], [startX, -height], [px + BOX_W / 2, -height], [px + BOX_W / 2, 0]]);
+                addLine(unit.lines, [[startX, 0], [startX, -height], [px + BOX_W / 2, -height], [px + BOX_W / 2, 0]], 0);
                 dropFromY = -height;
             }
         }
 
         if (childUnits.length === 0) return;
 
-        unit.lines.push([[dropX, dropFromY], [dropX, barY]]);
+        // Down from the person (group 0) or from the line to the partner once that is drawn,
+        // then the bar out to both sides, then down to each child
+        const start = k === 0 ? 0 : 1;
+        addLine(unit.lines, [[dropX, dropFromY], [dropX, barY]], start);
         let left = dropX - width / 2;
         const centers = childUnits.map((child) => {
             const offsetX = left - child.minX;
-            addUnit(unit, child, offsetX, ROW);
+            addUnit(unit, child, offsetX, ROW, start + 3);
             left += child.maxX - child.minX + H_GAP;
             return offsetX + BOX_W / 2;
         });
-        unit.lines.push([[Math.min(dropX, centers[0]), barY], [Math.max(dropX, centers.at(-1)), barY]]);
-        centers.forEach((x) => unit.lines.push([[x, barY], [x, ROW]]));
+        addLine(unit.lines, [[dropX, barY], [centers[0], barY]], start + 1);
+        addLine(unit.lines, [[dropX, barY], [centers.at(-1), barY]], start + 1);
+        centers.forEach((x) => addLine(unit.lines, [[x, barY], [x, ROW]], start + 2));
 
         nextFree = dropX + width / 2 + H_GAP;
         unit.minX = Math.min(unit.minX, dropX - width / 2);
@@ -250,8 +266,15 @@ function layoutUnit(g, id, levelsBelow, isRoot = false) {
     return unit;
 }
 
-// Copies a unit's boxes and lines into `target`, shifted by (dx, dy)
-function addUnit(target, unit, dx, dy) {
-    unit.nodes.forEach((n) => target.nodes.push({ ...n, x: n.x + dx, y: n.y + dy }));
-    unit.lines.forEach((line) => target.lines.push(line.map(([x, y]) => [x + dx, y + dy])));
+// Copies a unit's boxes and lines into `target`, shifted by (dx, dy) and `dt` time steps later
+function addUnit(target, unit, dx, dy, dt = 0) {
+    unit.nodes.forEach((n) => target.nodes.push({ ...n, x: n.x + dx, y: n.y + dy, appear: n.appear + dt }));
+    unit.lines.forEach((l) => target.lines.push({ points: l.points.map(([x, y]) => [x + dx, y + dy]), start: l.start + dt }));
+}
+
+// Skips lines of length 0, e.g. the half of a bar on a side without more children
+function addLine(lines, points, start) {
+    const [first, last] = [points[0], points.at(-1)];
+    if (points.length === 2 && first[0] === last[0] && first[1] === last[1]) return;
+    lines.push({ points, start });
 }
