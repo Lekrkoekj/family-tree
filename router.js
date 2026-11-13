@@ -6,14 +6,19 @@ let currentParent = null; // where the back button goes when there is no history
 let depth = 0; // how many steps deep the user is inside the app (0 = the page we started on)
 let replacing = false; // true while replacing the current history entry instead of adding one
 let leaveGuard = null; // see setLeaveGuard
+let tabTitle = null;   // see setTabTitle
 
 const $ = (id) => document.getElementById(id);
+const SITE_NAME = "Family Tree";
 
 export function startRouter(options) {
     if (started) return;
     started = true;
     routes = options.routes;
     isAdmin = options.isAdmin;
+
+    // The browser tab follows the top bar's title, whoever changes it
+    new MutationObserver(updateTabTitle).observe($("title"), { childList: true, characterData: true, subtree: true });
 
     // After a refresh the browser keeps history.state, so we pick up where we were.
     depth = history.state?.depth ?? 0;
@@ -30,6 +35,21 @@ export function startRouter(options) {
  */
 export function setLeaveGuard(fn) {
     leaveGuard = fn;
+}
+
+/**
+ * The browser tab's title is "<what the top bar says> • Family Tree". A screen can name something else
+ * instead, e.g. the person on the details page (whose top bar may show a file, or nothing).
+ * Every new screen starts without one.
+ */
+export function setTabTitle(text) {
+    tabTitle = text;
+    updateTabTitle();
+}
+
+function updateTabTitle() {
+    const page = (tabTitle ?? $("title").textContent).trim();
+    document.title = page && page !== SITE_NAME ? page + " • " + SITE_NAME : SITE_NAME;
 }
 
 function mayLeave() {
@@ -118,6 +138,7 @@ function parseHash() {
 
 function route() {
     leaveGuard = null; // the address already changed; the new screen may set its own guard in render
+    tabTitle = null;   // and its own tab title
     const { key, params } = parseHash();
     const def = routes[key];
 
@@ -144,6 +165,10 @@ function route() {
     $("title").textContent = def.title;      // a screen may replace this with something specific (a name)
     $("top-actions").replaceChildren();      // and may put its own buttons here
     $("back-button").hidden = !parent;
+    // backLabel: text next to the arrow, where it helps to say where back goes ("All files")
+    $("back-label").textContent = def.backLabel ?? "";
+    $("back-button").classList.toggle("labelled", !!def.backLabel);
+    $("back-button").setAttribute("aria-label", def.backLabel ?? "Back");
 
     const addLink = $("add-button");
     addLink.hidden = !def.add;

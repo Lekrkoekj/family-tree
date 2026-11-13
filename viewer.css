@@ -94,6 +94,16 @@ body {
     background: #f0f0f0;
 }
 
+/* An icon with text next to it, e.g. "‹ All files" */
+.icon-button.labelled {
+    width: auto;
+    gap: 2px;
+    padding: 0 12px 0 8px;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
 .icon-button svg {
     width: 22px;
     height: 22px;
@@ -311,6 +321,9 @@ body {
         display: flex;
         flex-direction: column;
         min-height: 0; /* without this the column grows with its content and nothing scrolls */
+    }
+    .person-right {
+        overflow: hidden;
     }
 
     .column-pane {
@@ -758,51 +771,342 @@ body {
     white-space: nowrap;
 }
 
-/* ---------- File page ---------- */
-.file-viewer {
-    display: grid;
-    gap: 8px;
-    margin-bottom: 12px;
+/* ---------- One file (fileViewer.js) ---------- */
+
+/* The file fills the space below the bar and never scrolls: the whole screen (Files tab, or a phone),
+   or the right column of the details page */
+#screen-file,
+#screen-person:has(.person-page.file-open) {
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0;
 }
 
-.file-viewer img,
-.file-viewer video {
-    max-width: 100%;
-    max-height: 70vh;
-    border-radius: 6px;
+#file-page,
+.person-page.file-open,
+.person-page.file-open .person-right {
+    height: 100%;
 }
 
-.file-viewer audio {
-    width: 100%;
+.person-page.file-open .person-right,
+#person-file-open {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
-.file-viewer .button {
-    justify-self: start; /* its own width, not the whole row */
+#person-file-open {
+    flex: 1;
 }
 
-.video-frame {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    border: 0;
-    border-radius: 6px;
+.file-host {
+    position: relative;
+    flex: 1;
+    min-height: 0;
 }
 
-.pdf-frame {
-    width: 100%;
-    height: 70vh;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+.file-preview {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
-.file-description {
+/* Photo: on a blurred, darkened copy of itself */
+.file-preview.photo {
+    background: #111;
+}
+
+/* The previous file, sliding away (fileViewer.js) */
+.file-preview.leaving {
+    pointer-events: none;
+}
+
+.preview-backdrop {
+    position: absolute;
+    inset: -10%; /* a bit bigger than the space, so the blurry edges fall outside */
+    width: 120%;
+    height: 120%;
+    object-fit: cover;
+    filter: blur(40px);
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.preview-stage {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    touch-action: none; /* dragging and pinching move the photo, not the page */
+    user-select: none;
+}
+
+.preview-stage.zoomed {
+    cursor: grab;
+}
+
+.preview-stage.dragging {
+    cursor: grabbing;
+}
+
+/* transform-origin 0 0: the zoom maths in fileViewer.js / panZoom.js assumes it */
+.preview-photo {
+    position: absolute;
+    left: 0;
+    top: 0;
+    max-width: none;
+    transform-origin: 0 0;
+}
+
+/* Over the photo; only what's in it catches clicks, the rest goes through to the photo */
+.preview-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+    transition: opacity 300ms;
+}
+
+.preview-overlay > * {
+    pointer-events: auto;
+}
+
+.file-preview.idle .preview-overlay {
+    opacity: 0;
+}
+
+.file-preview.idle .preview-overlay > * {
+    pointer-events: none;
+}
+
+.file-preview.idle .preview-stage {
+    cursor: none;
+}
+
+/* Date, description and people */
+/* Centred, like a caption; long descriptions don't get wider than is comfortable to read */
+.preview-caption {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box; /* max-height includes the padding */
+    padding: 12px 16px;
+    overflow-y: auto;
+    text-align: center;
+}
+
+.preview-caption .preview-description {
+    max-width: 60ch;
+}
+
+.preview-caption p,
+.preview-card p {
+    margin: 0;
+}
+
+.preview-date {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.preview-description {
+    font-style: italic;
     white-space: pre-wrap; /* keeps the line breaks typed in the description */
+    overflow-wrap: anywhere; /* a "word" longer than the line (e.g. a long link) may break; normal words don't */
 }
 
-.chips-links {
+.preview-description.clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.preview-people-label {
+    margin-top: 6px;
+    font-weight: 600;
+}
+
+.preview-pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 12px;
-    margin-bottom: 16px;
+    justify-content: center;
+    gap: 6px;
+}
+
+.pill {
+    padding: 3px 10px;
+    border: 1px solid #ccc;
+    border-radius: 999px;
+    background: #fff;
+    color: inherit;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.pill:hover {
+    background: #f4f4f4;
+}
+
+.link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* In the overlay: white on a dark fade, so it's readable on any photo */
+/* Its text gets as much room as in the strip under videos and PDFs (40%); the extra 36px is for the
+   taller fade at the top. That keeps it below the arrows. */
+.preview-overlay .preview-caption {
+    max-height: calc(40% + 36px);
+    padding-top: 48px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+    color: #fff;
+}
+
+.preview-overlay .preview-date {
+    color: #ddd;
+}
+
+.preview-overlay .pill {
+    border-color: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.preview-overlay .pill:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Next / previous, halfway up on both sides, and "3 / 12" at the top */
+.preview-arrow.icon-button {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    width: 44px;
+    height: 44px;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+}
+
+.preview-arrow.icon-button:hover {
+    background: rgba(0, 0, 0, 0.65);
+}
+
+.preview-arrow.prev {
+    left: 12px;
+}
+
+.preview-arrow.next {
+    right: 12px;
+}
+
+.preview-counter {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 1;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-size: 0.8rem;
+}
+
+/* Video and PDF: the file on top, the caption in a strip below */
+.preview-media {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    background: #111;
+}
+
+.file-preview.pdf .preview-media {
+    background: #f7f7f5;
+}
+
+.preview-media iframe,
+.preview-media video {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+}
+
+.preview-media .muted {
+    margin: auto;
+    padding: 16px;
+    color: #ccc;
+}
+
+.file-preview.strip .preview-caption {
+    flex: none;
+    max-height: 40%;
+    border-top: 1px solid #ddd;
+    background: #fff;
+}
+
+/* Websites, audio and other files: a grey card */
+.file-preview.card {
+    background: #f7f7f5; /* the family tree's background */
+    touch-action: pan-y; /* scrolling up and down stays the browser's; sideways is a swipe to the next file */
+}
+
+.preview-card {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: safe center; /* "safe": a long description scrolls instead of being cut off at the top */
+    gap: 6px;
+    padding: 24px 16px;
+    text-align: center;
+}
+
+.preview-icon {
+    font-size: 64px;
+    line-height: 1;
+}
+
+.preview-card h2 {
+    margin: 8px 0 0;
+    font-size: 1.25rem;
+    overflow-wrap: anywhere;
+}
+
+.preview-domain {
+    color: #666;
+}
+
+.preview-card .preview-description {
+    max-width: 60ch;
+    margin-top: 8px;
+}
+
+.preview-card audio {
+    width: min(100%, 400px);
+    margin-top: 8px;
+}
+
+.preview-card .button {
+    margin-top: 12px;
+}
+
+.file-preview.card .preview-caption {
+    flex: none;
+    max-height: 40%;
 }
 
 /* ---------- Add file ---------- */

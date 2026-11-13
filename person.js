@@ -1,16 +1,20 @@
-import { goTo, goBack, setLeaveGuard } from "./router.js";
+import { goTo, goBack, setLeaveGuard, setTabTitle } from "./router.js";
 import { renderPersonForm, personFormSnapshot } from "./admin.js";
 import { $, friendlyError } from "./ui.js";
 import { formatDate, lifespan, age } from "./dates.js";
 import { getPerson, getRelations, getHomePersonId, setHomePerson, getFile, getFiles } from "./store.js";
 import { fullName } from "./names.js";
 import { initRelations, openPicker, confirmRemove, openWedding } from "./relations.js";
-import { fileSections, renderFileView, fileActions } from "./filesPage.js";
+import { fileSections, fileOrder, fileActions } from "./filesPage.js";
+import { renderFileView } from "./fileViewer.js";
 import { blobUrl } from "./storage.js";
-import { icon, iconButton } from "./icons.js";
+import { icon, iconButton, labelledButton } from "./icons.js";
 
 let isAdmin = false;
-let editing = false; // true on #/person/<id>/edit: the left column shows the form instead of the details
+let editing = false;     // true on #/person/<id>/edit: the left column shows the form instead of the details
+let nameInView = true;   // is the big name under the photo on screen?
+let shownName = "";      // the name of the person on the page, for the bars
+let savedScroll = null;  // { id, view, files }: where the page was scrolled when a file was opened
 
 // Same width as the two-column layout in viewer.css
 const isDesktop = () => matchMedia("(min-width: 800px)").matches;
@@ -21,22 +25,32 @@ export function initPerson(options) {
     $("person-tree-link").prepend(icon("tree"));
     $("person-set-home").prepend(icon("home"));
 
-    // Desktop: the name appears in the left bar once the big name has scrolled out of view
-    // (while editing the bar says "Edit person" instead)
+    // The name appears in the bar once the big name has scrolled out of view: the left column's bar on
+    // desktop, the app's top bar on a phone. (No root = the screen; scrolling areas around it count too.)
     new IntersectionObserver(([entry]) => {
-        if (!editing) $("person-bar-name").hidden = entry.isIntersecting;
-    }, { root: $("person-left-scroll") }).observe($("person-name"));
+        nameInView = entry.isIntersecting;
+        showNameInBars();
+    }).observe($("person-name"));
 
     // Opening a file: on a phone that's a step back can undo (the file covers the whole screen);
-    // on desktop it's just the right column changing, so back leaves the page instead
+    // on desktop it's just the right column changing, so back leaves the page instead.
+    // The scroll position is remembered, to come back to the same spot when the file is closed.
     for (const area of [$("person-files"), $("person-photo-link")]) {
         area.addEventListener("click", (event) => {
             const link = event.target.closest("a[href]");
             if (!link) return;
             event.preventDefault();
+            savedScroll = { id: $("person-page").dataset.personId, view: $("view").scrollTop, files: $("person-files-scroll").scrollTop };
             goTo(link.getAttribute("href"), { replace: isDesktop() });
         });
     }
+}
+
+// Not while editing (the bars say "Edit person"), and on a phone not while a file is open (the bar shows the file)
+function showNameInBars() {
+    if (editing || document.body.dataset.screen !== "screen-person") return;
+    $("person-bar-name").hidden = nameInView;
+    if (!$("person-page").classList.contains("file-open")) $("title").textContent = nameInView ? "" : shownName;
 }
 
 function personHash(id) {
@@ -79,8 +93,10 @@ function renderBars(p, edit) {
     $("person-bar-left").replaceChildren(iconButton("back", "Back", () => goBack({ fallback: "#/tree/" + encodeURIComponent(p.id) })));
     $("person-bar-name").textContent = fullName(p);
     $("person-bar-right").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
-    // Phone: the app's top bar shows the name (or the open file, see renderFiles)
-    $("title").textContent = fullName(p);
+    // Phone: the app's top bar is the bar (the open file replaces this in renderFiles)
+    shownName = fullName(p);
+    $("title").textContent = nameInView ? "" : shownName;
+    $("person-bar-name").hidden = nameInView; // e.g. coming back from "Edit person"
     $("top-actions").replaceChildren(...(isAdmin ? [iconButton("pencil", "Edit person", editPerson)] : []));
 }
 
@@ -101,12 +117,14 @@ export function renderPerson(id, fileId = null, edit = false) {
 
     // On desktop each column scrolls on its own: the files start at the top every time,
     // the person only when it's another person (so it stays put while you look through their files)
-    $("person-files-scroll").scrollTop = $("person-file-scroll").scrollTop = 0;
+    $("person-files-scroll").scrollTop = 0;
     if ($("person-page").dataset.personId !== id) $("person-left-scroll").scrollTop = 0;
     $("person-page").dataset.personId = id;
+    if (savedScroll?.id !== id) savedScroll = null;
 
     renderPhoto(p);
     $("person-name").textContent = fullName(p);
+    setTabTitle(fullName(p));
     $("person-bar-name").textContent = fullName(p);
     $("person-facts").replaceChildren(...facts(p));
 
@@ -142,6 +160,13 @@ export function renderPerson(id, fileId = null, edit = false) {
         button.hidden = !isAdmin || (kind === "parent" && relatives.parents.length >= 2);
         button.onclick = () => openPicker(id, kind, rerender);
     });
+
+    // A file was closed: back to where the page was scrolled when it was opened (the router scrolled to the top)
+    if (!fileId && !edit && savedScroll) {
+        $("view").scrollTop = savedScroll.view;
+        $("person-files-scroll").scrollTop = savedScroll.files;
+        savedScroll = null;
+    }
 }
 
 // The profile photo above the name: the photo's display version, at the full width of the column.
@@ -184,14 +209,18 @@ function renderFiles(p, fileId, rerender) {
             onDeleted: () => closeFile(p.id),    // back to all files, not away from the person
         };
         // Desktop: the file bar at the top of the right column
-        $("file-bar-left").replaceChildren(iconButton("back", "All files", () => closeFile(p.id)));
+        $("file-bar-left").replaceChildren(labelledButton("back", "All files", () => closeFile(p.id)));
         $("file-bar-title").textContent = open.title;
         $("file-bar-right").replaceChildren(...fileActions(open, options));
         // Phone: the app's top bar is the file bar (its back arrow undoes the step that opened the file)
         $("title").textContent = open.title;
+        setTabTitle(open.title); // the browser tab names the file too, not the person
         $("top-actions").replaceChildren(...fileActions(open, options));
 
-        renderFileView($("person-file-view"), open);
+        renderFileView($("person-file-view"), open, {
+            list: fileOrder(getFiles().filter((f) => f.people.includes(p.id))),
+            hrefFor: (f) => "#/person/" + encodeURIComponent(p.id) + "/file/" + encodeURIComponent(f.id),
+        });
         return;
     }
 

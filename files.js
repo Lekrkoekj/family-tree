@@ -17,6 +17,9 @@ export const KIND_NAMES = {
     other: "File",
 };
 
+// Shown where there's no thumbnail, and on the card for files without a preview
+export const KIND_ICONS = { photo: "🖼️", video: "🎬", audio: "🎵", pdf: "📄", website: "🌐", other: "📎" };
+
 // "Scan Opa.JPG" -> "jpg"
 export function extensionOf(name) {
     const match = /\.([a-z0-9]+)$/i.exec(name);

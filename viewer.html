@@ -11,7 +11,7 @@
 
 <body hidden>
     <header id="top-bar" class="bar">
-        <div class="bar-left"><button id="back-button" class="icon-button" aria-label="Back" hidden>&larr;</button></div>
+        <div class="bar-left"><button id="back-button" class="icon-button" aria-label="Back" hidden><span id="back-label"></span></button></div>
         <h1 id="title" class="bar-title">Family Tree</h1>
         <div class="bar-right">
             <div id="top-actions" class="bar-actions"></div>
@@ -117,11 +117,11 @@
                 <div id="person-files-overview" class="column-pane">
                     <div class="bar column-bar">
                         <div class="bar-left"></div>
-                        <h1 class="bar-title">Photos &amp; documents</h1>
-                        <div class="bar-right"><a id="person-add-file" class="button" hidden>+ Add</a></div>
+                        <h1 class="bar-title">Archive</h1>
+                        <div class="bar-right"><a id="person-add-file" class="button" hidden>+ Upload file</a></div>
                     </div>
                     <div id="person-files-scroll" class="column-scroll">
-                        <p id="person-files-empty" class="muted" hidden>No photos or documents yet.</p>
+                        <p id="person-files-empty" class="muted" hidden>Nothing in the archive yet.</p>
                         <div id="person-files"></div>
                     </div>
                 </div>
@@ -132,9 +132,7 @@
                         <h1 id="file-bar-title" class="bar-title"></h1>
                         <div class="bar-right" id="file-bar-right"></div>
                     </div>
-                    <div id="person-file-scroll" class="column-scroll">
-                        <div id="person-file-view"></div>
-                    </div>
+                    <div id="person-file-view" class="file-host"></div>
                 </div>
             </div>
           </div>
@@ -215,7 +213,7 @@
 
         <!-- FILE PAGE -->
         <section class="screen" id="screen-file" hidden>
-            <div id="file-page"></div>
+            <div id="file-page" class="file-host"></div>
         </section>
 
         <!-- ADD FILE SCREEN -->
@@ -365,7 +363,7 @@
 
     <nav id="bottom-bar">
         <a href="#/tree" data-tab="tree">Family Tree</a>
-        <a href="#/files" data-tab="files">Files</a>
+        <a href="#/files" data-tab="files">Family Archive</a>
         <a href="#/admin" data-tab="admin" id="admin-tab" hidden>Admin</a>
         <a href="#/account" data-tab="account">Account</a>
     </nav>
@@ -383,9 +381,11 @@
         import { initFiles, renderFiles, renderFilePage } from "./filesPage.js";
         import { initCategories, renderCategories } from "./categories.js";
         import { loadStore, clearCache } from "./store.js";
+        import { icon } from "./icons.js";
 
         document.getElementById("sign-out").onclick = () => signOut(auth);
         document.getElementById("back-button").onclick = () => goBack();
+        document.getElementById("back-button").prepend(icon("back"));
 
         // All the screens in the app. Key = the URL after "#/" with "/" replaced by "-".
         
@@ -400,10 +400,10 @@
             "person-new": { title: "Add person", tab: "admin", admin: true, parent: "#/people", screen: "person-form", render: renderPersonForm },
             "person-edit": { pattern: "person/:id/edit", title: "Edit person", tab: "tree", admin: true, parent: (id) => "#/person/" + id, screen: "person", render: (id) => renderPerson(id, null, true) },
             "person": { title: "Person", tab: "tree", parent: (id) => "#/tree/" + id, param: true, render: renderPerson },
-            "person-file": { pattern: "person/:id/file/:fileId", title: "Person", tab: "tree", parent: (id) => "#/person/" + id, screen: "person", render: renderPerson },
+            "person-file": { pattern: "person/:id/file/:fileId", title: "Person", tab: "tree", parent: (id) => "#/person/" + id, backLabel: "All files", screen: "person", render: renderPerson },
 
-            "files": { title: "Files", tab: "files", add: "#/file/new", render: renderFiles },
-            "file": { title: "File", tab: "files", parent: "#/files", param: true, render: renderFilePage },
+            "files": { title: "Family Archive", tab: "files", add: "#/file/new", render: renderFiles },
+            "file": { title: "File", tab: "files", parent: "#/files", backLabel: "All files", param: true, render: renderFilePage },
             "categories": { title: "File categories", tab: "admin", admin: true, parent: "#/admin", render: renderCategories },
             "file-new": { title: "Add file", tab: "files", admin: true, parent: "#/files", param: "optional", render: (personId) => renderFileForm(null, personId) },
             "file-edit": { title: "Edit file", tab: "files", admin: true, parent: (id) => "#/file/" + id, param: true, screen: "file-new", render: renderFileForm },

@@ -1,7 +1,7 @@
-// Files: the Files tab, plus three pieces the person details page reuses:
+// Files: the Files tab, plus two pieces the person details page reuses:
 //   fileSections()   collapsible sections per category with file cards
-//   renderFileView() the file itself and its details, drawn into any container
 //   fileActions()    the buttons for a file's bar: download, edit, and the ⋯ menu
+// The file itself is drawn by fileViewer.js.
 
 import { goTo, goBack } from "./router.js";
 import { $, friendlyError } from "./ui.js";
@@ -10,13 +10,13 @@ import { db } from "./firebase.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import { getFile, getFiles, getCategories, getPerson, deleteFile, setProfilePhoto } from "./store.js";
 import { fullName, normalizeName } from "./names.js";
-import { KIND_NAMES, youTubeId, formatSize, extensionOf } from "./files.js";
+import { KIND_NAMES, KIND_ICONS, youTubeId, formatSize, extensionOf } from "./files.js";
 import { blobUrl, downloadFile, deletePaths, makeAvatar } from "./storage.js";
 import { iconButton } from "./icons.js";
 import { menuButton } from "./menu.js";
+import { renderFileView } from "./fileViewer.js";
 
 const KIND_FILTERS = [["all", "All"], ["photo", "Photos"], ["video", "Videos"], ["audio", "Audio"], ["document", "Documents"], ["website", "Websites"]];
-const ICONS = { photo: "🖼️", video: "🎬", audio: "🎵", pdf: "📄", website: "🌐", other: "📎" };
 const COLLAPSED_KEY = "family-tree-collapsed-categories";
 
 let isAdmin = false;
@@ -68,8 +68,8 @@ function renderList() {
 
     const status = $("files-status");
     status.textContent = all.length === 0
-        ? (isAdmin ? "No files yet. Use the + button to add the first one." : "No files yet.")
-        : "No files match these filters.";
+        ? (isAdmin ? "Nothing in the archive yet. Use the + button to add the first file." : "Nothing in the archive yet.")
+        : "Nothing matches these filters.";
     status.hidden = shown.length > 0;
 
     $("files-sections").replaceChildren(...fileSections(shown, (f) => "#/file/" + encodeURIComponent(f.id)));
@@ -81,18 +81,11 @@ function renderList() {
 // Without any categories at all there's just one grid, without a header.
 // linkFor(file) gives the address a card links to.
 export function fileSections(files, linkFor) {
-    const sorted = [...files].sort(newestFirst);
-    const categories = getCategories();
-    if (categories.length === 0) return [grid(sorted, linkFor)];
-
-    const known = new Set(categories.map((c) => c.id));
-    const groups = [...categories.map((c) => ({ key: c.id, name: c.name })), { key: "", name: "Uncategorized" }];
+    const groups = groupFiles(files);
+    if (groups.length === 1 && groups[0].key === null) return [grid(groups[0].files, linkFor)];
     const collapsed = readCollapsed();
 
-    return groups.flatMap(({ key, name }) => {
-        const inGroup = sorted.filter((f) => (known.has(f.category) ? f.category : "") === key);
-        if (inGroup.length === 0) return [];
-
+    return groups.map(({ key, name, files: inGroup }) => {
         // <details> / <summary> is the browser's own open/close section
         const section = document.createElement("details");
         section.className = "file-section";
@@ -106,8 +99,26 @@ export function fileSections(files, linkFor) {
         const summary = document.createElement("summary");
         summary.textContent = name + " (" + inGroup.length + ")";
         section.append(summary, grid(inGroup, linkFor));
-        return [section];
+        return section;
     });
+}
+
+// The files in the order fileSections shows them: per category, newest first within each. For next / previous.
+export function fileOrder(files) {
+    return groupFiles(files).flatMap((g) => g.files);
+}
+
+// [{ key, name, files }] per category (alphabetical), "Uncategorized" last, empty ones left out.
+// Without any categories: one group with key null.
+function groupFiles(files) {
+    const sorted = [...files].sort(newestFirst);
+    const categories = getCategories();
+    if (categories.length === 0) return [{ key: null, name: null, files: sorted }];
+
+    const known = new Set(categories.map((c) => c.id));
+    return [...categories.map((c) => ({ key: c.id, name: c.name })), { key: "", name: "Uncategorized" }]
+        .map((g) => ({ ...g, files: sorted.filter((f) => (known.has(f.category) ? f.category : "") === g.key) }))
+        .filter((g) => g.files.length > 0);
 }
 
 // Which sections someone closed, remembered in this browser
@@ -135,7 +146,7 @@ function grid(files, linkFor) {
 function card(f, href) {
     const thumb = document.createElement("div");
     thumb.className = "file-thumb";
-    thumb.textContent = ICONS[f.kind];
+    thumb.textContent = KIND_ICONS[f.kind];
     thumb.dataset.id = f.id;
     thumbObserver.observe(thumb);
 
@@ -192,145 +203,16 @@ export function renderFilePage(id) {
     }
     $("title").textContent = f.title;
     $("top-actions").replaceChildren(...fileActions(f));
-    renderFileView($("file-page"), f);
-}
-
-// ---------- Shared: one file ----------
-
-// Draws the file itself and its details into `container` (the bar with buttons is separate: fileActions)
-export function renderFileView(container, f) {
-    // Downloads finish later; this token tells whether this container still shows this file by then
-    const token = {};
-    container.fileViewToken = token;
-    const alive = () => container.fileViewToken === token && container.isConnected;
-
-    const parts = [];
-    const viewerEl = document.createElement("div");
-    viewerEl.className = "file-viewer";
-    viewerEl.append(...viewer(f, viewerEl, alive));
-    parts.push(viewerEl);
-
-    if (f.description) {
-        const description = document.createElement("p");
-        description.className = "file-description";
-        description.textContent = f.description;
-        parts.push(description);
-    }
-
-    const factList = document.createElement("dl");
-    factList.className = "facts";
-    factList.append(...facts(f));
-    parts.push(factList, people(f));
-    container.replaceChildren(...parts);
-}
-
-function facts(f) {
-    const category = getCategories().find((c) => c.id === f.category);
-    const rows = [
-        ["Type", KIND_NAMES[f.kind]],
-        ["Date", f.date ? formatDate(f.date) : ""],
-        ["Category", category?.name ?? ""],
-        ["File", f.source === "upload" ? f.storage.original.name + " · " + formatSize(f.storage.original.size) : ""],
-        ["Link", f.source === "link" ? new URL(f.url).hostname : ""],
-    ];
-    return rows.filter(([, value]) => value).flatMap(([label, value]) => {
-        const dt = document.createElement("dt");
-        dt.textContent = label;
-        const dd = document.createElement("dd");
-        dd.textContent = value;
-        return [dt, dd];
+    // Next / previous go through the list as it's shown with the current filters, or through all
+    // files when this one isn't in it (e.g. opened from a link while filters are set)
+    const filtered = fileOrder(getFiles().filter(matches));
+    renderFileView($("file-page"), f, {
+        list: filtered.some((x) => x.id === id) ? filtered : fileOrder(getFiles()),
+        hrefFor: (x) => "#/file/" + encodeURIComponent(x.id),
     });
 }
 
-// Returns the elements that show the file itself
-function viewer(f, viewerEl, alive) {
-    const url = f.url;
-    const original = f.storage?.original.path;
-
-    // Runs `use(src)` when the download is ready, unless something else is shown by then
-    const load = (promise, use) => promise.then((src) => { if (alive()) use(src); }).catch((error) => {
-        console.error("Could not load file:", error);
-        if (alive()) viewerEl.replaceChildren(note(friendlyError(error)));
-    });
-
-    if (f.kind === "photo") {
-        const img = document.createElement("img");
-        img.alt = f.title;
-        img.referrerPolicy = "no-referrer";
-        img.onerror = () => img.replaceWith(note("No preview available. Download the file to view it."));
-        if (f.source === "link") img.src = url;
-        else load(blobUrl((f.storage.display ?? f.storage.original).path), (src) => { img.src = src; });
-        return [img];
-    }
-
-    if (f.kind === "video" && f.source === "link" && youTubeId(url)) {
-        // youtube-nocookie: YouTube only sets cookies once someone presses play
-        const frame = document.createElement("iframe");
-        frame.src = "https://www.youtube-nocookie.com/embed/" + youTubeId(url);
-        frame.allow = "fullscreen; picture-in-picture";
-        frame.referrerPolicy = "strict-origin-when-cross-origin";
-        frame.className = "video-frame";
-        return [frame];
-    }
-
-    if (f.kind === "video" || f.kind === "audio") {
-        const media = document.createElement(f.kind);
-        media.controls = true;
-        if (f.source === "link") media.src = url;
-        else load(blobUrl(original), (src) => { media.src = src; });
-        return [media];
-    }
-
-    if (f.kind === "pdf") {
-        // The browser's own PDF viewer. Not every phone shows PDFs inside a page; the "Open" link always works.
-        const frame = document.createElement("iframe");
-        frame.className = "pdf-frame";
-        frame.title = f.title;
-        const open = document.createElement("a");
-        open.textContent = "Open PDF in a new tab ↗";
-        open.target = "_blank";
-        open.rel = "noopener noreferrer";
-        if (f.source === "link") frame.src = open.href = url;
-        else load(blobUrl(original), (src) => { frame.src = open.href = src; });
-        return [frame, open];
-    }
-
-    if (f.kind === "website") {
-        // Websites can't be shown inside the site (most block that), so a clear button to open it
-        const visit = document.createElement("a");
-        visit.className = "button";
-        visit.href = url;
-        visit.target = "_blank";
-        visit.rel = "noopener noreferrer";
-        visit.textContent = "Visit website ↗";
-        return [note("This is a link to " + new URL(url).hostname + "."), visit];
-    }
-    return [note(ICONS.other + " No preview for this kind of file. Use the download button below.")];
-}
-
-function note(text) {
-    const p = document.createElement("p");
-    p.className = "muted";
-    p.textContent = text;
-    return p;
-}
-
-function people(f) {
-    const list = f.people.map(getPerson).filter(Boolean);
-    const box = document.createElement("div");
-    box.className = "chips-links";
-    box.hidden = list.length === 0;
-    const label = document.createElement("span");
-    label.className = "muted";
-    label.textContent = "People: ";
-    box.append(label, ...list.map((p) => {
-        const a = document.createElement("a");
-        a.href = "#/person/" + encodeURIComponent(p.id);
-        a.textContent = fullName(p);
-        return a;
-    }));
-    return box;
-}
+// ---------- Shared: the buttons for one file ----------
 
 // The buttons for a file's bar. options:
 //   profileFor:  a person id; admins then get "Use as / Remove as profile photo" for that person in the ⋯ menu
@@ -356,15 +238,14 @@ export function fileActions(f, options = {}) {
             () => window.open(f.url, "_blank", "noopener,noreferrer")));
     }
 
-    if (!isAdmin) return actions;
+    if (isAdmin) actions.push(iconButton("pencil", "Edit", () => { location.hash = "#/file/edit/" + encodeURIComponent(f.id); }));
 
-    actions.push(iconButton("pencil", "Edit", () => { location.hash = "#/file/edit/" + encodeURIComponent(f.id); }));
-
+    // Viewers only get "File info" here
     const more = [];
-    const profile = options.profileFor && profilePhotoItem(f, options.profileFor, options.onChange);
+    const profile = isAdmin && options.profileFor && profilePhotoItem(f, options.profileFor, options.onChange);
     if (profile) more.push(profile);
     more.push({ label: "File info", onclick: () => showFileInfo(f) });
-    more.push({ label: "Delete file", danger: true, onclick: () => remove(f, options.onDeleted) });
+    if (isAdmin) more.push({ label: "Delete file", danger: true, onclick: () => remove(f, options.onDeleted) });
     actions.push(menuButton("more", "More", more));
     return actions;
 }
@@ -385,13 +266,17 @@ function profilePhotoItem(f, personId, onChange) {
     };
 }
 
-// ---------- File info (admins) ----------
+// ---------- File info ----------
 
+// Everything about the file that the viewer itself doesn't show. Who uploaded it: admins only.
 async function showFileInfo(f) {
+    const category = getCategories().find((c) => c.id === f.category);
     const rows = [
         ["Title", f.title],
         ["Type", KIND_NAMES[f.kind]],
     ];
+    if (f.date) rows.push(["Date", formatDate(f.date)]);
+    if (category) rows.push(["Category", category.name]);
     if (f.source === "upload") {
         const { original, display } = f.storage;
         rows.push(
@@ -403,10 +288,8 @@ async function showFileInfo(f) {
     } else {
         rows.push(["Link", f.url]);
     }
-    rows.push(
-        [f.source === "upload" ? "Uploaded on" : "Added on", f.createdAt ? new Date(f.createdAt).toLocaleString() : "Unknown"],
-        [f.source === "upload" ? "Uploaded by" : "Added by", f.uploadedBy ? "Loading…" : "Unknown"],
-    );
+    rows.push([f.source === "upload" ? "Uploaded on" : "Added on", f.createdAt ? new Date(f.createdAt).toLocaleString() : "Unknown"]);
+    if (isAdmin) rows.push([f.source === "upload" ? "Uploaded by" : "Added by", f.uploadedBy ? "Loading…" : "Unknown"]);
 
     const list = $("file-info-list");
     list.replaceChildren(...rows.flatMap(([label, value]) => {
@@ -419,7 +302,7 @@ async function showFileInfo(f) {
     $("file-info-dialog").showModal();
 
     // uploadedBy is the uploader's email (the id of their user document); look up their current name
-    if (!f.uploadedBy) return;
+    if (!isAdmin || !f.uploadedBy) return;
     const by = list.lastElementChild;
     try {
         const user = (await getDoc(doc(db, "users", f.uploadedBy))).data();

@@ -5,6 +5,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PATHS = {
     back: ["M15 6l-6 6 6 6"],
+    forward: ["M9 6l6 6-6 6"],
     close: ["M6 6l12 12", "M18 6L6 18"],
     plus: ["M12 5v14", "M5 12h14"],
     search: ["M4 11a7 7 0 1 0 14 0a7 7 0 1 0 -14 0", "M16 16l4 4"], // a magnifying glass
@@ -41,5 +42,16 @@ export function iconButton(name, label, onclick) {
     button.setAttribute("aria-label", label);
     button.append(icon(name));
     if (onclick) button.onclick = onclick;
+    return button;
+}
+
+// The same with its text next to the icon, e.g. labelledButton("back", "All files", () => ...)
+export function labelledButton(name, label, onclick) {
+    const button = iconButton(name, label, onclick);
+    button.classList.add("labelled");
+    button.removeAttribute("title"); // the text is right there
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.append(text);
     return button;
 }
